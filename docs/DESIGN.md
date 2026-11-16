@@ -185,3 +185,26 @@ console and network.
   summary of what the iPad asked for. That should reveal the meter request the app makes
   without the module having to guess at a write. The relay itself is still untested with a
   real iPad.
+
+### 2026-11-16: checked against the console's own command set
+
+- The maintainer supplied `IPAD_Q3.DOSC`, the Quantum 338 iPad command set from the
+  offline software (title "DiGiCo OSC Commands 1012", 815 commands). It is a binary file:
+  one record per command with a section number, a block number, a value type (switch,
+  number, meter, text), minimum and maximum, and a label such as "eq gain 2". It does not
+  contain OSC addresses as text; section and block are numbers. The address a label maps
+  to is the block's name plus the label with spaces as underscores, which matches every
+  address already known from other sources.
+- Result for Quantum 338: inputs have a four-band EQ and filters; aux, group and matrix
+  have an eight-band EQ (first four dynamic), a pre/post-insert switch and no filters;
+  the graphic EQ has 32 bands and a trim. The module's table was corrected to match and
+  `tools/check-dosc.mjs` now reports no address outside the list.
+- Meters: the set lists meter-type entries on every channel (pre, post, fader, gain
+  reduction, gate, output) and, globally, only `/Meters/values` and `/Meters/clear`. There
+  is no `/Meters/request` in this set, so the request mechanism is still unknown; the
+  iPad snoop is the way to find it.
+- Not captured, on purpose, though the console lists them: phantom (including on
+  inserts), main/alt, alt-input preamp, stereo mode, input type, solo and listen states,
+  control group membership, bus solo and sends-on-faders modes, surround pan.
+- DiGiCo's file is not included in the repository. The check can be repeated with
+  `node tools/check-dosc.mjs <file>`; the SD-range command sets are still to do.

@@ -198,7 +198,7 @@ await test('graphic EQ capture and recall', async () => {
 	await run('capture', { section: 'Graphic_EQ', index: 2 })
 	assert.equal(mod.engine.mode, 'holding')
 	await run('slot', { slot: 2 })
-	assert.equal(Object.keys(mod.engine.lib.slots['2'].steps[0].values).length, 34)
+	assert.equal(Object.keys(mod.engine.lib.slots['2'].steps[0].values).length, 35)
 	const saved = mod.engine.lib.slots['2'].steps[0].values.geq_gain_17.a[0]
 	sim.surface('/Graphic_EQ/2/geq_gain_17', 'f', [-11])
 	await run('scopes', { scopes: ['eq'] })

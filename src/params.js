@@ -2,10 +2,18 @@
 //
 // Addresses look like /<Section>/<number>/<suffix>, e.g. /Input_Channels/12/EQ/eq_gain_2.
 // This file lists, per section, the suffixes that make up "the whole channel" for capture.
-// The address names follow the table published in the MIT-licensed
-// companion-module-digico-osc project (Andrew Broughton), which was built by observing
-// the iPad app. Anything a console doesn't answer is simply left out of the capture, so
-// listing an address that an older console lacks is harmless.
+//
+// Where the names come from:
+// - Parameter names (eq_gain_2, comp_thresh_1 ...) and how many of each there are were
+//   checked on 2026-11-16 against the console's own iPad command set for Quantum 338
+//   (IPAD_Q3, 815 commands). `node tools/check-dosc.mjs <file>` repeats that check for any
+//   console's command set.
+// - Section names (Input_Channels ...) and block names (Channel_Input, EQ, Dynamics ...)
+//   are not in that file, which only numbers them. They follow the table published in the
+//   MIT-licensed companion-module-digico-osc project (Andrew Broughton), built by
+//   observing the iPad app.
+// Anything a console doesn't answer is simply left out of the capture, so listing an
+// address that an older console lacks is harmless.
 
 export const SECTIONS = {
 	Input_Channels: { label: 'Input', short: 'In', name: 'Channel_Input/name' },
@@ -44,30 +52,20 @@ export const SCOPE_IDS = SCOPES.map((s) => s.id)
 
 const bands = (names, n) => names.flatMap((name) => Array.from({ length: n }, (_, i) => `${name}_${i + 1}`))
 
-const EQ = [
+const FILTERS = ['Filters/hi_filter_in', 'Filters/hi_filter_freq', 'Filters/lo_filter_in', 'Filters/lo_filter_freq']
+
+// Every EQ band has these; only the first four bands can be dynamic.
+const eq = (bandCount) => [
 	'EQ/eq_in',
-	...bands(
-		[
-			'EQ/eq_on',
-			'EQ/eq_freq',
-			'EQ/eq_gain',
-			'EQ/eq_Q',
-			'EQ/eq_curve',
-			'EQ/eq_symm_Q',
-			'EQ/dynamic_eq_on',
-			'EQ/eq_thresh',
-			'EQ/eq_ratio',
-			'EQ/eq_attack',
-			'EQ/eq_release',
-			'EQ/eq_over-under',
-		],
-		4,
-	),
-	'Filters/hi_filter_in',
-	'Filters/hi_filter_freq',
-	'Filters/lo_filter_in',
-	'Filters/lo_filter_freq',
+	...bands(['EQ/eq_on', 'EQ/eq_freq', 'EQ/eq_gain', 'EQ/eq_Q', 'EQ/eq_curve', 'EQ/eq_symm_Q'], bandCount),
+	...bands(['EQ/dynamic_eq_on', 'EQ/eq_thresh', 'EQ/eq_ratio', 'EQ/eq_attack', 'EQ/eq_release', 'EQ/eq_over-under'], 4),
 ]
+
+// Inputs have a four-band EQ plus high and low pass filters. On Quantum, busses have
+// eight bands and a pre/post-insert switch, and no separate filters; a console with
+// four-band busses simply doesn't answer for bands 5 to 8.
+const EQ = [...eq(4), ...FILTERS]
+const BUSS_EQ = [...eq(8), 'EQ/eq_pre-ins']
 
 const COMP = [
 	'Dynamics/comp-multiband-desser',
@@ -83,6 +81,7 @@ const COMP = [
 ]
 
 const GATE = [
+	'Dynamics/gate-duck-comp',
 	'Dynamics/gate_in',
 	'Dynamics/gate_thresh',
 	'Dynamics/gate_range',
@@ -107,7 +106,7 @@ const STRIP = [
 const INPUT_SENDS = ['Aux_Send/#/send_on', 'Aux_Send/#/send_level', 'Aux_Send/#/send_pan']
 const GROUP_SENDS = [...INPUT_SENDS, 'Aux_Send/#/send_pre-post']
 
-const BUSS = ['Buss_Trim/name', 'Buss_Trim/trim', 'Buss_Trim/phase', ...STRIP, ...EQ, ...COMP, ...GATE]
+const BUSS = ['Buss_Trim/name', 'Buss_Trim/trim', 'Buss_Trim/phase', ...STRIP, ...BUSS_EQ, ...COMP, ...GATE]
 
 // Deliberately not captured: phantom power, main/alt input switching and the alt-input
 // preamp (recalling these by accident is how you hurt ribbon mics and ears), solo and
@@ -123,14 +122,14 @@ const TABLE = {
 		...STRIP,
 		...EQ,
 		...COMP,
-		'Dynamics/gate-duck-comp',
 		...GATE,
 		...INPUT_SENDS,
 	],
 	Group_Outputs: [...BUSS, ...GROUP_SENDS],
 	Aux_Outputs: [...BUSS],
 	Matrix_Outputs: [...BUSS],
-	Graphic_EQ: ['name', 'geq_in', ...bands(['geq_gain'], 32)],
+	// DiGiCo's list names the trim "geq  trim", with two spaces
+	Graphic_EQ: ['name', 'geq_in', 'geq__trim', ...bands(['geq_gain'], 32)],
 	Control_Groups: ['name', 'fader', 'mute'],
 }
 
@@ -186,37 +185,42 @@ export function describe(section, index, name) {
 	return `${s ? s.short : section} ${index}${name ? ` ${name}` : ''}`
 }
 
-// Meter addresses to ask for during a meter capture. These are candidates gathered from
-// open-source projects; none has been confirmed on a console with audio, which is what the
-// capture is for. Reads only: each is sent as a "<address>/?" query.
-const INPUT_METERS = [
-	'Channel_Input/post_meter',
-	'Channel_Input/post_meter/left',
-	'Channel_Input/post_meter/right',
-	'Channel_Input/pre_meter',
+// Meter addresses to ask for during a meter capture. The names are the meter-type entries
+// in the Quantum 338 iPad command set; how the console delivers their values has not been
+// seen on a console with audio, which is what the capture is for. Reads only: each is
+// sent as a "<address>/?" query.
+const DYN_METERS = [
 	'Dynamics/gate_meter',
-	'Dynamics/input_meter/left',
-	'fader_meter/left',
-	'fader_meter/right',
-	...bands(['Dynamics/GR_meter', 'EQ/GR_meter'], 4),
-]
-const BUSS_METERS = [
-	'Buss_Trim/post_meter',
-	'Buss_Trim/post_meter/left',
-	'Buss_Trim/post_meter/right',
-	'Buss_Trim/pre_meter',
 	'Dynamics/input_meter/left',
 	'Dynamics/input_meter/right',
 	'fader_meter/left',
 	'fader_meter/right',
 	'Output/meter/left',
 	'Output/meter/right',
-	'Output/meter2',
 	...bands(['Dynamics/GR_meter', 'EQ/GR_meter'], 4),
+]
+const INPUT_METERS = [
+	'Channel_Input/pre_meter/left',
+	'Channel_Input/pre_meter/right',
+	'Channel_Input/post_meter/left',
+	'Channel_Input/post_meter/right',
+	...DYN_METERS,
+]
+const BUSS_METERS = [
+	'Buss_Trim/pre_meter',
+	'Buss_Trim/pre_meter/right',
+	'Buss_Trim/post_meter',
+	'Buss_Trim/post_meter/right',
+	'Buss_Trim/tube_meter/left',
+	'Buss_Trim/tube_meter/right',
+	'Output/dir_meter/left',
+	'Output/dir_meter/right',
+	...DYN_METERS,
 ]
 
 export function meterSuffixes(section) {
 	if (section === 'Input_Channels') return INPUT_METERS
 	if (section === 'Group_Outputs' || section === 'Aux_Outputs' || section === 'Matrix_Outputs') return BUSS_METERS
+	if (section === 'Graphic_EQ') return ['input_meter', 'output_meter']
 	return []
 }

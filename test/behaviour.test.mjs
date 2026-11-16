@@ -498,10 +498,10 @@ test('sending is paced to the configured rate', async (t) => {
 	engine.setScopes(['eq'])
 	sim.received.length = 0
 	const started = Date.now()
-	engine.pressSlot(1) // 33 values at 200/s should take roughly 160 ms
-	await until(() => sim.received.length === 33, 'all GEQ values to arrive')
+	engine.pressSlot(1) // 34 values at 200/s should take roughly 160 ms
+	await until(() => sim.received.length === 34, 'all GEQ values to arrive')
 	const took = Date.now() - started
-	assert.ok(took >= 100, `33 messages at 200/s arrived in ${took} ms, which is too fast`)
+	assert.ok(took >= 100, `34 messages at 200/s arrived in ${took} ms, which is too fast`)
 	assert.ok(took < 1500, `took ${took} ms`)
 })
 

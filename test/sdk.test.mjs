@@ -12,6 +12,9 @@ import { getVariableDefinitions } from '../src/variables.js'
 import { getPresets } from '../src/presets.js'
 import { DEFAULTS, getConfigFields } from '../src/config.js'
 
+import { parseDosc, doscAddresses } from '../tools/check-dosc.mjs'
+import { captureSuffixes, meterSuffixes } from '../src/params.js'
+
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
 const manifest = JSON.parse(read('companion/manifest.json'))
 const pkg = JSON.parse(read('package.json'))
@@ -122,4 +125,58 @@ test('presets only use actions, feedbacks, options and variables that exist', ()
 	const listed = structure.flatMap((s) => s.definitions.flatMap((d) => d.presets))
 	assert.equal(new Set(listed).size, listed.length)
 	assert.deepEqual([...listed].sort(), Object.keys(presets).sort())
+})
+
+test('command-set checker: reads a .DOSC file and names its commands the way the module does', () => {
+	// A made-up file in the same layout as DiGiCo's (theirs is not ours to include)
+	const title = Buffer.from('Test OSC Commands 3\0')
+	const record = (section, block, type, min, max, label) => {
+		const b = Buffer.alloc(64)
+		b[3] = section
+		b[6] = block
+		b[10] = type
+		b.writeFloatLE(min, 11)
+		b.writeFloatLE(max, 15)
+		b[27] = 1
+		b[29] = label.length
+		b.write(label, 30, 'ascii')
+		return b
+	}
+	const length = Buffer.alloc(2)
+	length.writeUInt16LE(title.length)
+	const file = Buffer.concat([
+		length,
+		title,
+		record(1, 4, 1, -18, 18, 'eq gain 2'),
+		record(6, 2, 0, 0, 2, 'send pre-post'),
+		record(1, 1, 3, 0, 0, 'post meter/left'),
+		record(17, 15, 1, -18, 18, 'geq  trim'),
+		record(99, 1, 0, 0, 1, 'not a channel'),
+	])
+	const { title: readTitle, records } = parseDosc(file)
+	assert.equal(readTitle, 'Test OSC Commands 3')
+	assert.equal(records.length, 5)
+	assert.deepEqual(
+		doscAddresses(records).map((a) => [a.section, a.suffix, a.type, a.min, a.max]),
+		[
+			['Input_Channels', 'EQ/eq_gain_2', 'number', -18, 18],
+			['Group_Outputs', 'Aux_Send/#/send_pre-post', 'switch', 0, 2],
+			['Input_Channels', 'Channel_Input/post_meter/left', 'meter', 0, 0],
+			['Graphic_EQ', 'geq__trim', 'number', -18, 18],
+		],
+	)
+})
+
+test('parameter table reflects the Quantum 338 command set: eight-band bus EQ, no bus filters, GEQ trim', () => {
+	const group = captureSuffixes('Group_Outputs', 1)
+	const input = captureSuffixes('Input_Channels', 1)
+	assert.ok(group.includes('EQ/eq_gain_8') && group.includes('EQ/eq_symm_Q_8') && group.includes('EQ/eq_pre-ins'))
+	assert.ok(!group.includes('EQ/eq_thresh_5'), 'only the first four bands are dynamic')
+	assert.ok(!group.some((suffix) => suffix.startsWith('Filters/')), 'busses have no separate filters')
+	assert.ok(group.includes('Dynamics/gate-duck-comp') && group.includes('Aux_Send/1/send_pre-post'))
+	assert.ok(input.includes('Filters/hi_filter_freq') && !input.includes('EQ/eq_gain_5'))
+	assert.ok(captureSuffixes('Graphic_EQ', 1).includes('geq__trim'))
+	assert.ok(meterSuffixes('Input_Channels').includes('Channel_Input/post_meter/left'))
+	assert.ok(meterSuffixes('Aux_Outputs').includes('Buss_Trim/post_meter'))
+	assert.deepEqual(meterSuffixes('Graphic_EQ'), ['input_meter', 'output_meter'])
 })

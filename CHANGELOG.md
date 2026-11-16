@@ -55,11 +55,20 @@ presets; stored libraries are converted automatically.
 - Setup instructions now include loading the iPad command set with the console's "load"
   button, which the console needs before it will respond.
 - A link to the web page at the top of the settings page.
+- `tools/check-dosc.mjs`: compares the module's address list with any console's iPad command
+  set file and reports the differences, so each console family can be checked.
 - The web page's slot editor: reorder and remove steps, retarget a step, and choose
   whether it follows the scope keys or is sent in full.
 
 ### Fixed
 
+- **Address list corrected against DiGiCo's own.** The parameter names were checked
+  against the Quantum 338 iPad command set (`IPAD_Q3`, 815 commands). Every address the
+  module uses is now in that list. Corrections: aux, group and matrix EQs are captured as
+  eight bands plus the pre/post-insert switch (only four bands were captured before);
+  busses have no separate high and low pass filters, so those are no longer asked for;
+  the gate/ducker mode is captured on busses as well as inputs; the graphic EQ trim is
+  captured.
 - The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."
   instead of "DiGiCo: SD/Quantum Recall".
 - Recall scope preset buttons wrapped their labels (COM/P, LEVE/L).

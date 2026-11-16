@@ -12,10 +12,11 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 58 automated tests against a
-simulated console. It has not yet been run against DiGiCo software or a console. The
-address list comes from open-source observation of the iPad app and needs confirming on
-each console. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).
+**0.x are test releases.** The logic is covered by 60 automated tests against a
+simulated console. It has been connected to the Quantum 338 offline software, but the
+manual test plan has not yet been run there or on a console. The
+parameter names have been checked against DiGiCo's own iPad command set for Quantum 338;
+the SD consoles' command sets still need checking. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).
 
 Needs Companion 4.3 or newer.
 
@@ -42,6 +43,7 @@ yarn install
 yarn test                                      # automated tests against the simulated console
 yarn preview                                   # web page at http://localhost:8088/instance/recall/, no console needed
 node tools/probe.mjs 192.168.1.10 8001 8000    # list what a console answers, then print what it sends
+node tools/check-dosc.mjs path/to/IPAD_Q3.DOSC # compare the address list with a console's own command set
 yarn package                                   # build the .tgz
 yarn format                                    # prettier
 ```
