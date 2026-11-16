@@ -31,7 +31,7 @@ software on a Windows PC, allow inbound UDP on the receive port through Windows 
 
 **If the console is not answering**, set **Enable External Control** to No and back to
 Yes. The console can stop talking to a device that has been off or away for a while, and
-does not start again by itself. Do the same after changing this connection's settings.
+does not start again by itself; the DiGiCo iPad app is affected the same way. Do the same after changing this connection's settings.
 
 The console accepts one iPad-type device. To keep using a real iPad as well, turn on
 **Relay a real iPad through this module** and point the iPad app at the Companion computer
