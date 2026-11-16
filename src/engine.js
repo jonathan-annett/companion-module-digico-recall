@@ -290,6 +290,7 @@ export class Engine {
 		const sent = this.sentAt.get(m.path)
 		if (sent && Date.now() - sent < ECHO_WINDOW_MS) {
 			this.audit.note(m.path, m.args)
+			if (typeof m.args[0] === 'number') this.gangValues.set(m.path.slice(1), m.args[0])
 			return
 		}
 		this.audit.change({
@@ -709,18 +710,25 @@ export class Engine {
 		const slot = this.lib.slots[id]
 		if (!slot) return 'empty'
 		// "Last touched" only redirects a capture of one channel; anything else goes where it was
-		// aimed. If the touched channel is ganged, its partners get the same values, so one
-		// press sets both sides of a stereo pair.
+		// aimed.
+		//
+		// Ganged channels: the console treats a value written to one member as that control
+		// being moved, and moves the other members by the same amount (found on the Quantum
+		// 338 offline software with ganged graphic EQs, 2026-11-16). So only one member of a
+		// gang can be set to exact values; writing to a second member would drag the first
+		// away again. Each gang therefore gets one write per press, and its other members
+		// are left to follow.
 		const redirect = slot.steps.length === 1 && !slot.steps[0].fixed
 		const sends = [] // [step, target]
+		const followers = [] // gang members that will move without being written to
+		const isFollower = (t) => followers.some((f) => f.section === t.section && f.index === t.index)
 		for (const step of slot.steps) {
 			const target = redirect ? this.resolveTarget(step) : { section: step.section, index: step.index }
 			if (!target) return 'mismatch'
+			if (isFollower(target)) continue
 			sends.push([step, target])
-			if (redirect && this.targetMode === 'touched') {
-				for (const index of this.gangPartners(target.section, target.index)) {
-					sends.push([step, { section: target.section, index }])
-				}
+			for (const index of this.gangPartners(target.section, target.index)) {
+				if (!isFollower({ section: target.section, index })) followers.push({ section: target.section, index })
 			}
 		}
 		const targets = sends.map(([, target]) => target)
@@ -728,6 +736,13 @@ export class Engine {
 		for (const [step, target] of sends) {
 			const scopes = step.fixed ? null : this.scopes
 			n += this.sendValues(target.section, target.index, step.values, scopes)
+			// The partners' moves that follow are the console's doing, not the operator's
+			for (const index of this.gangPartners(target.section, target.index)) {
+				for (const suffix of Object.keys(step.values)) {
+					if (!scopes || scopes.has(scopeOf(suffix)))
+						this.sentAt.set(`/${target.section}/${index}/${suffix}`, Date.now())
+				}
+			}
 			if (this.scriptRec) {
 				// A script keeps its own copy of exactly what was sent, so later changes to this
 				// slot, or to the scope toggles, don't change the script.
@@ -753,7 +768,8 @@ export class Engine {
 					.toUpperCase()}]`
 			: ''
 		this.audit.event(
-			`Recalled slot ${id} (${slot.label || describeSlot(slot)})${scopeNote}: ${n} values to ${describeChannels(uniqueTargets(targets))}`,
+			`Recalled slot ${id} (${slot.label || describeSlot(slot)})${scopeNote}: ${n} values to ${describeChannels(uniqueTargets(targets))}` +
+				(followers.length ? `; ganged ${describeChannels(followers)} left to follow by the same amount` : ''),
 		)
 		this.log('info', `Recalled slot ${id}: ${n} values to ${describeChannels(targets)}`)
 		this.changed()

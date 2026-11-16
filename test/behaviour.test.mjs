@@ -771,32 +771,59 @@ test('gangs: one coincidence is not enough, and different kinds of channel are n
 	assert.deepEqual(engine.gangList(), [])
 })
 
-test('gangs: recalling to the last touched channel sets every member of its gang', async (t) => {
-	const { sim, engine } = await rig(t, {}, { counts: { Graphic_EQ: 12 } })
+test('gangs: a recall writes to one member only, and the others follow by the same amount', async (t) => {
+	const { sim, engine } = await rig(t, { audit: true }, { counts: { Graphic_EQ: 12 } })
+	sim.gangs.push({ section: 'Graphic_EQ', members: [9, 10] })
 	await engine.captureToHold('Graphic_EQ', 1)
 	engine.pressSlot(1)
 	const want = engine.lib.slots['1'].steps[0].values.geq_gain_20.a[0]
 
+	// The pair has different curves: band 20 sits 2 dB apart
+	sim.values.set('/Graphic_EQ/10/geq_gain_20', { t: 'f', a: [Math.fround(sim.get('/Graphic_EQ/9/geq_gain_20') + 2)] })
 	await moveGanged(sim, 16, [-1, -2, -3, -3.4])
 	await until(() => engine.gangList().length === 1, 'pair recognised')
+	const side = engine.lastTouched.index // whichever member reported last
+	const other = side === 9 ? 10 : 9
+	const apart = sim.get(`/Graphic_EQ/${other}/geq_gain_20`) - sim.get(`/Graphic_EQ/${side}/geq_gain_20`)
+	assert.equal(Math.abs(apart), 2)
 	engine.setTargetMode('touched')
 	engine.setScopes(['eq'])
+	sim.received.length = 0
 	assert.equal(engine.pressSlot(1), 'recalled')
-	await until(() => sim.get('/Graphic_EQ/9/geq_gain_20') === want, 'left side set')
-	await until(() => sim.get('/Graphic_EQ/10/geq_gain_20') === want, 'right side set')
-	assert.notEqual(sim.get('/Graphic_EQ/11/geq_gain_20'), want, 'a graphic outside the pair is untouched')
-
-	// Recorded into a script, the pair becomes two steps
-	engine.toggleScriptRecord()
-	engine.pressSlot(1)
-	engine.toggleScriptRecord()
-	engine.pressSlot(2)
-	assert.deepEqual(engine.lib.slots['2'].steps.map((step) => step.index).sort(), [10, 9])
-
-	// With the target on ORIGINAL the gang plays no part
-	engine.setTargetMode('original')
+	await until(() => sim.get(`/Graphic_EQ/${side}/geq_gain_20`) === want, 'touched side set exactly')
 	await engine.transport.drained()
-	await sleep(100)
+	await sleep(80)
+	assert.ok(
+		sim.received.every((m) => m.path.startsWith(`/Graphic_EQ/${side}/`)),
+		'nothing is written to the other side',
+	)
+	assert.equal(sim.get(`/Graphic_EQ/${side}/geq_gain_20`), want, 'and the touched side stays where it was put')
+	assert.equal(
+		sim.get(`/Graphic_EQ/${other}/geq_gain_20`),
+		Math.fround(want + apart),
+		'the other side keeps its 2 dB difference',
+	)
+	assert.notEqual(sim.get('/Graphic_EQ/11/geq_gain_20'), want, 'a graphic outside the pair is untouched')
+	// The other side moving in step is the console's doing: it is not taken for a touch
+	assert.equal(engine.lastTouched.index, side)
+	assert.deepEqual(engine.gangList(), [{ section: 'Graphic_EQ', members: [9, 10] }])
+	assert.match(
+		JSON.stringify(engine.audit.entries),
+		new RegExp(`ganged GEQ ${other}.* left to follow by the same amount`),
+	)
+
+	// A capture of both sides, recalled to where it came from, writes the first side only
+	engine.setTargetMode('original')
+	await engine.captureToHold('Graphic_EQ', 9)
+	await engine.captureToHold('Graphic_EQ', 10)
+	engine.pressSlot(2)
+	sim.received.length = 0
+	engine.pressSlot(2)
+	await engine.transport.drained()
+	await sleep(60)
+	assert.ok(sim.received.length > 0 && sim.received.every((m) => m.path.startsWith('/Graphic_EQ/9/')))
+
+	// A capture of one channel sent back to its own channel is unaffected by gangs elsewhere
 	sim.received.length = 0
 	engine.pressSlot(1)
 	await engine.transport.drained()

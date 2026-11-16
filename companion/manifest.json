@@ -5,7 +5,7 @@
 	"name": "digico-recall",
 	"shortname": "recall",
 	"description": "Capture and recall channel settings, scripts and names on DiGiCo SD and Quantum consoles",
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"license": "MIT",
 	"repository": "git+https://github.com/jonathan-annett/companion-module-digico-recall.git",
 	"bugs": "https://github.com/jonathan-annett/companion-module-digico-recall/issues",

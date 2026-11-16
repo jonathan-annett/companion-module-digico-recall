@@ -9,11 +9,22 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.3] - unreleased
+## [0.2.4] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.2 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.3 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.3: recalls to ganged channels, after the maintainer's test on the
+Quantum 338 offline software.
+
+- **A recall writes to one member of a gang, not all of them.** The console treats values
+  written to one member as that member's controls being moved, and moves the others by
+  the same amounts. Writing to a second member would have dragged the first away from the
+  recalled values whenever the two sides differed. Now the touched side is set exactly and
+  the other follows, keeping whatever difference it had. A capture holding both sides of a
+  gang writes the first only. The log entry for the recall names the channels left to
+  follow, and their following is not taken for someone touching them.
 
 Since test build 0.2.2: the SD-range consoles, checked against their own command sets.
 
@@ -58,12 +69,9 @@ presets; stored libraries are converted automatically.
 - **Ganged channels are recognised.** The console doesn't say which channels are ganged,
   but ganged channels report every change on both members at the same instant, moving by
   the same amount (they need not hold the same values). The module spots that, shows the
-  pair on the GRAB and TO buttons ("GEQ 9+10 PC 1 L"), notes it in the log, and when a
-  capture is recalled to the last touched channel it is sent to every member of that
-  channel's gang, so one press sets both sides of a stereo pair. The link is dropped if a
-  member keeps moving on its own. Seen so far on graphic EQs on the Quantum 338 offline
-  software; how the console treats values written to one member of a gang is not yet
-  known.
+  pair on the GRAB and TO buttons ("GEQ 9+10 PC 1 L") and notes it in the log. The link
+  is dropped if a member keeps moving on its own. Seen so far on graphic EQs on the
+  Quantum 338 offline software. For what a recall does with a gang, see above.
 - **Audit log.** Optional. Records every change the console reports with the time it
   arrived, the channel, the control and the value before and after; a fader move is one
   entry. Also records what the module does and connection changes. A LOG button switches

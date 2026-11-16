@@ -261,3 +261,20 @@ console and network.
 - Every set also lists, outside the channels, snapshot control, session name, console
   presets ("New Preset", "Recall Scope") and macro buttons. Not used here; noted for the
   proxy's sniffer and for later tools.
+
+### 2026-11-16: what a recall does to a gang, 0.2.4
+
+- The maintainer ran M28. Three behaviours are now known for a ganged pair of graphics:
+  a move on the surface moves both by the same amount; a console preset changes only the
+  side it is applied to; a value written over the iPad link behaves like a surface move.
+- Consequence: over this link the difference between ganged members is fixed. Writing A
+  to its recalled values shifts B by the same steps; writing B afterwards shifts A away
+  again by however much the sides differed. No order of writes makes two differing sides
+  equal.
+- Decision: one write per gang per recall. The touched member (or, for a capture holding
+  several members, the first) is set exactly; the others follow. This is exact when the
+  sides matched, and otherwise leaves one side right rather than neither.
+- Not attempted: un-ganging from the module. The command sets list no gang control.
+- The partners' moves arrive from the console just after the write. They are marked as
+  expected, so they do not change the last touched channel or start a capture.
+- Seen on graphic EQs only. Ganged inputs and busses are assumed to behave the same.

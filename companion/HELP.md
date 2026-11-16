@@ -74,8 +74,12 @@ its contents, and the text of the last one recalled turns yellow.
   always go to the channels they were made for.
   - **Ganged pairs.** If the channel you touched is ganged with another (a stereo pair of
     graphic EQs, say), the module notices because both report every move together. TO
-    then shows both ("TO GEQ 9+10 PC 1 L") and a recall is sent to both. The module has to
-    see the pair move a few times before it knows; moving one band is enough.
+    then shows both ("TO GEQ 9+10 PC 1 L"). The module has to see the pair move a few
+    times before it knows; moving one band is enough.
+    A recall is sent to the side you touched only. The console treats it as that side's
+    controls being moved, and moves the other side by the same amounts: if the two sides
+    matched before, they match after; if they differed, they still differ by as much.
+    To make both sides identical, un-gang them, recall to each, and gang them again.
 - **CANCEL**: stops whatever is being built.
 
 **Recall scope**

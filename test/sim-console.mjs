@@ -23,6 +23,7 @@ export class SimConsole {
 			...counts,
 		}
 		this.values = new Map()
+		this.gangs = [] // { section, members: [n, ...] }: set by a test to gang channels
 		this.received = []
 		this.dropEvery = dropEvery
 		this.queryCount = 0
@@ -72,8 +73,21 @@ export class SimConsole {
 		}
 		if (!m.args.length) return
 		this.received.push(m)
+		const before = this.values.get(m.path)?.a[0]
 		this.values.set(m.path, { t: m.types, a: m.args })
 		this.out(m.path, m.types, m.args) // the console echoes what it was told
+		// A value written to one member of a gang is treated as that control being moved:
+		// the other members move by the same amount (as seen on the Quantum offline software)
+		const addr = /^\/([^/]+)\/(\d+)\/(.+)$/.exec(m.path)
+		const gang = addr && this.gangs.find((g) => g.section === addr[1] && g.members.includes(Number(addr[2])))
+		if (gang && typeof m.args[0] === 'number' && typeof before === 'number') {
+			for (const member of gang.members) {
+				if (member === Number(addr[2])) continue
+				const path = `/${addr[1]}/${member}/${addr[3]}`
+				const was = this.values.get(path)?.a[0]
+				if (typeof was === 'number') this.surface(path, m.types, [Math.fround(was + m.args[0] - before)])
+			}
+		}
 	}
 
 	/** Someone moves a control on the surface. */
