@@ -12,6 +12,8 @@ import { Engine } from '../src/engine.js'
 import { makeInstanceClass } from '../src/instance.js'
 import { encode, decode } from '../src/osc.js'
 import { captureSuffixes, scopeOf, parseAddress, SCOPE_IDS, SECTION_IDS } from '../src/params.js'
+import { localAddressFor, consoleSetup } from '../src/network.js'
+import { getConfigFields } from '../src/config.js'
 import { cleanSnapshot, cleanScript, cleanLibrary, cleanNames } from '../src/validate.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -317,6 +319,49 @@ test('validation: bad entries from the web page or an imported file are dropped 
 	assert.deepEqual(Object.keys(lib.slots), ['2'])
 	assert.deepEqual(lib.learned.Input_Channels, ['ok/one'])
 	assert.deepEqual(cleanLibrary('garbage').slots, {})
+})
+
+test("console setup: picks this computer's address on the console's network and swaps the port names", () => {
+	const interfaces = {
+		lo0: [{ address: '127.0.0.1', netmask: '255.0.0.0', family: 'IPv4', internal: true }],
+		en0: [
+			{ address: 'fe80::1', netmask: 'ffff:ffff:ffff:ffff::', family: 'IPv6', internal: false },
+			{ address: '10.0.0.5', netmask: '255.255.255.0', family: 'IPv4', internal: false },
+		],
+		en7: [{ address: '192.168.16.162', netmask: '255.255.0.0', family: 'IPv4', internal: false }],
+	}
+	assert.deepEqual(localAddressFor('192.168.16.231', interfaces), {
+		best: '192.168.16.162',
+		matched: true,
+		all: ['10.0.0.5', '192.168.16.162'],
+	})
+	assert.equal(localAddressFor('172.16.0.9', interfaces).matched, false)
+	assert.equal(localAddressFor('172.16.0.9', interfaces).best, '10.0.0.5')
+	assert.deepEqual(localAddressFor('not an address', {}), { best: '', matched: false, all: [] })
+
+	const setup = consoleSetup({ host: '192.168.16.231', sendPort: 8001, recvPort: 8000 }, interfaces)
+	assert.equal(setup.type, 'DiGiCo Pad')
+	assert.equal(setup.ip, '192.168.16.162')
+	assert.equal(setup.send, 8000, 'the console sends to the port the module listens on')
+	assert.equal(setup.rcv, 8001, 'the console receives on the port the module sends to')
+	assert.deepEqual(setup.otherIps, ['10.0.0.5'])
+})
+
+test('settings page shows the console row for the saved ports', () => {
+	const fields = Object.fromEntries(
+		getConfigFields({ host: '10.1.2.3', sendPort: 9101, recvPort: 9100 }).map((f) => [f.id, f]),
+	)
+	assert.equal(fields.consoleType.value, 'DiGiCo Pad')
+	assert.equal(fields.consoleSend.value, '9100')
+	assert.equal(fields.consoleRcv.value, '9101')
+	assert.equal(fields.consoleSend.label, 'Send')
+	assert.equal(fields.consoleRcv.label, 'Rcv')
+	const row = ['consoleType', 'consoleName', 'consoleIp', 'consoleSend', 'consoleRcv', 'consoleEnabled']
+	assert.equal(
+		row.reduce((sum, id) => sum + fields[id].width, 0),
+		12,
+		'the row fills one line of the form',
+	)
 })
 
 // ---- through the Companion class ------------------------------------------------------

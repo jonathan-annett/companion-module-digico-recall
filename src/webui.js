@@ -71,6 +71,22 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 .cell input { flex: 1; min-width: 0; }
 .note { color: var(--dim); font-size: 12.5px; max-width: 70ch; }
 .empty-state { color: var(--dim); padding: 40px 0; max-width: 56ch; }
+.dg { background: #b9c2c9; color: #111; border-radius: 4px; padding: 14px 16px 12px; max-width: 640px; font: 13px Arial, Helvetica, sans-serif; }
+.dg-title { background: #5d6b78; color: #fff; text-align: center; font-weight: 700; margin: -14px -16px 12px; padding: 5px; border-radius: 4px 4px 0 0; }
+.dg-line { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; margin-bottom: 14px; }
+.dg-yes { background: #c9b8f5; border: 1px solid #333; padding: 3px 14px; font-weight: 700; }
+.dg-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 6px; }
+.dg-btn { background: #6d6d6d; color: #fff; padding: 3px 14px; font-weight: 700; }
+.dg table { background: #dfe3e6; border: 1px solid #555; }
+.dg th, .dg td { border: 1px solid #777; padding: 4px 8px; text-align: left; font-size: 13px; }
+.dg th { background: #c7cdd2; font-weight: 400; }
+.dg td { color: #3a2fb0; font-weight: 700; height: 26px; }
+.dg td.tick { color: #159a2c; font-size: 17px; text-align: center; }
+.dg-foot { margin-top: 12px; font-size: 12.5px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dg-local { border: 2px solid #d4380d; background: #fff3c4; padding: 3px 8px; border-radius: 3px; white-space: pre; }
+.dg-arrow { color: #a8200d; font-weight: 700; }
+.steps { max-width: 70ch; padding-left: 20px; }
+.steps li { margin: 6px 0; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: 1; }
 #toast.bad { border-color: var(--bad); color: var(--bad); }
@@ -94,7 +110,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 	var base = location.pathname.replace(/\/?$/, '/')
 	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null, scripts: null }, draft: null, dirty: false,
 		names: { section: 'Input_Channels', live: {}, edit: {}, setId: '1' } }
-	var TABS = [['slots', 'Captures'], ['scripts', 'Scripts'], ['names', 'Names'], ['library', 'Library']]
+	var TABS = [['slots', 'Captures'], ['scripts', 'Scripts'], ['names', 'Names'], ['library', 'Library'], ['setup', 'Setup']]
 
 	function h(tag, attrs) {
 		var el = document.createElement(tag)
@@ -483,6 +499,41 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			}))
 	}
 
+	// ---- setup ----------------------------------------------------------------------
+
+	// A picture of the console's External Control page with the values to enter there.
+	function viewSetup() {
+		var st = S.status, su = st.setup
+		var row = [su.type, su.name, su.ip || '?', su.send, su.rcv]
+		var blank = function () { return h('tr', {}, [0, 1, 2, 3, 4, 5].map(function () { return h('td', {}) })) }
+		return h('div', { class: 'detail' },
+			h('h2', {}, 'Console setup'),
+			h('p', { class: 'sub' }, st.online
+				? 'Connected' + (st.consoleName ? ' to ' + st.consoleName : '') + '. These are the values the console is using.'
+				: 'No reply from the console yet. Make its External Control page look like this.'),
+			h('div', { class: 'dg' },
+				h('div', { class: 'dg-title' }, 'External Control'),
+				h('div', { class: 'dg-line' }, 'Enable External Control:', h('span', { class: 'dg-yes' }, 'YES')),
+				h('div', { class: 'dg-head' }, 'External Devices', h('span', { class: 'dg-btn' }, 'add device')),
+				h('table', {},
+					h('tr', {}, ['Type', 'Name', 'IP Address', 'Send', 'Rcv', 'Enabled'].map(function (c) { return h('th', {}, c) })),
+					h('tr', {}, row.map(function (c) { return h('td', {}, c) }), h('td', { class: 'tick' }, '\u2713')),
+					blank(), blank()),
+				h('div', { class: 'dg-foot' },
+					h('span', { class: 'dg-local' }, 'Local: ', st.consoleName || 'console name', '   IP: ', h('b', {}, su.consoleIp || '?')),
+					h('span', { class: 'dg-arrow' }, '\u2190 the console\u2019s own address. This is the IP to enter in Companion.'))),
+			h('ol', { class: 'steps' },
+				h('li', {}, 'On the console open Setup > External Control and set Enable External Control to YES.'),
+				h('li', {}, 'Read the "Local ... IP" line at the bottom of that page (highlighted above). That address goes in this connection\u2019s settings in Companion as "Console IP address". It is currently set to ', h('b', {}, su.consoleIp || 'nothing'), '.'),
+				h('li', {}, 'Press "add device" and choose the DiGiCo Pad type. Name it anything.'),
+				h('li', {}, 'Enter IP Address ', h('b', {}, su.ip || '(this computer\u2019s address)'), ', Send ', h('b', {}, su.send), ', Rcv ', h('b', {}, su.rcv), '.'),
+				h('li', {}, 'Touch the Enabled column so it shows a green tick.'),
+				h('li', {}, 'Leave "OSC generic" off. This module does not use it.')),
+			!su.ipMatched && su.ip ? h('p', { class: 'note' }, 'This computer has no address on the same network as ' + (su.consoleIp || 'the console') + ', so ' + su.ip + ' is a guess. Check the console address in the connection settings.') : null,
+			su.otherIps.length ? h('p', { class: 'note' }, 'This computer\u2019s other addresses: ' + su.otherIps.join(', ') + '.') : null,
+			h('p', { class: 'note' }, 'If it still does not connect: on a Windows PC running the DiGiCo offline software, allow inbound UDP port ' + su.rcv + ' through Windows Firewall, and check that this computer\u2019s own firewall allows incoming connections for Companion.'))
+	}
+
 	// ---- shell ----------------------------------------------------------------------
 
 	function renderHeader() {
@@ -515,7 +566,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
 		if (!S.status || !S.lib) { add(main, h('div', { class: 'detail' }, h('div', { class: 'empty-state' }, 'Loading…'))); return }
-		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'scripts' ? viewScripts() : S.tab === 'names' ? viewNames() : viewLibrary())
+		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'scripts' ? viewScripts() : S.tab === 'names' ? viewNames() : S.tab === 'setup' ? viewSetup() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
 	}
@@ -545,12 +596,16 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		})
 	}
 
-	loadStatus().then(function () { return reload(true) }).catch(fail)
+	loadStatus().then(function () {
+		if (!S.status.online) S.tab = 'setup' // nothing else is useful until the console answers
+		return reload(true)
+	}).catch(fail)
 	setInterval(function () {
 		loadStatus().catch(function () { $('lamp').className = 'lamp'; $('console').textContent = 'Companion not reachable' })
 		// Pick up captures made on the Stream Deck, unless an edit is in progress.
 		var typing = document.activeElement && /INPUT|SELECT/.test(document.activeElement.tagName)
 		if (!S.dirty && !typing && S.tab !== 'names') reload(false).catch(function () {})
+		if (S.tab === 'setup' && !typing) render()
 	}, 2500)
 })()
 </script>

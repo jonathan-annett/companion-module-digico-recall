@@ -1,3 +1,5 @@
+import { consoleSetup } from './network.js'
+
 export const DEFAULTS = {
 	host: '192.168.1.10',
 	sendPort: 8001,
@@ -28,20 +30,52 @@ const port = (id, label, def, extra = {}) => ({
 	...extra,
 })
 
-export function getConfigFields() {
+/**
+ * The console's External Devices row, laid out as on the console's External Control page
+ * and filled in with what to enter there for the saved settings.
+ */
+function consoleRowFields(config) {
+	const setup = consoleSetup(config)
+	const cell = (id, label, value, width) => ({ type: 'static-text', id, label, value: String(value), width })
+	const ip = setup.ip || 'this computer’s IP address'
+	let note = 'Set Enable External Control to YES, press "add device", and fill in the row as shown above.'
+	if (setup.ip && !setup.ipMatched) {
+		note += ` This computer has no address on the same network as ${setup.consoleIp || 'the console'}; ${setup.ip} is a guess.`
+	}
+	if (setup.otherIps.length) note += ` This computer's other addresses: ${setup.otherIps.join(', ')}.`
+	note += ' Shown for the saved settings: save and reopen this page after changing the console address or ports.'
+	return [
+		cell('consoleHeading', 'On the console: Setup > External Control > External Devices', '', 12),
+		cell('consoleType', 'Type', setup.type, 2),
+		cell('consoleName', 'Name', setup.name, 2),
+		cell('consoleIp', 'IP Address', ip, 3),
+		cell('consoleSend', 'Send', setup.send, 2),
+		cell('consoleRcv', 'Rcv', setup.rcv, 1),
+		cell('consoleEnabled', 'Enabled', '✓', 2),
+		cell('consoleNote', '', note, 12),
+	]
+}
+
+export function getConfigFields(config = DEFAULTS) {
 	const ipadOnly = { isVisibleExpression: '$(options:ipadEnabled)' }
 	return [
+		...consoleRowFields({ ...DEFAULTS, ...config }),
 		{
 			type: 'static-text',
 			id: 'info',
 			width: 12,
-			label: 'Console setup',
+			label: 'One iPad-type device',
 			value:
-				'On the console open Setup > External Control, enable it, and add this computer as a device of type ' +
-				'"DiGiCo Pad" with the two ports below. The console allows one iPad-type device, so to keep using a ' +
-				'real iPad as well, turn on the relay and point the iPad app at this computer instead of the console.',
+				'The console allows one iPad-type device. To keep using a real iPad as well, turn on the relay ' +
+				'below and point the iPad app at this computer instead of the console.',
 		},
-		{ type: 'textinput', id: 'host', label: 'Console IP address', width: 6, default: DEFAULTS.host },
+		{
+			type: 'textinput',
+			id: 'host',
+			label: 'Console IP address (the "Local ... IP" line at the bottom of the console\'s External Control page)',
+			width: 12,
+			default: DEFAULTS.host,
+		},
 		port('sendPort', 'Console receive port (module sends here)', DEFAULTS.sendPort),
 		port('recvPort', 'Console send port (module listens here)', DEFAULTS.recvPort),
 		{

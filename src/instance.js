@@ -46,7 +46,7 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 		}
 
 		getConfigFields() {
-			return getConfigFields()
+			return getConfigFields(this.config)
 		}
 
 		async handleHttpRequest(request) {

@@ -1,6 +1,7 @@
 import { SECTIONS, SECTION_IDS, SCOPES, SCOPE_IDS } from './params.js'
 import { cleanSnapshot, cleanScript, cleanNameSet, cleanNames, cleanLibrary } from './validate.js'
 import { PAGE } from './webui.js'
+import { consoleSetup } from './network.js'
 
 // The web page and its JSON API. Companion serves this at
 //   http://<companion>:<port>/instance/<connection label>/
@@ -30,6 +31,7 @@ export async function handleHttp(self, request) {
 				...engine.status(),
 				sections: SECTIONS,
 				scopeDefs: SCOPES,
+				setup: consoleSetup(self.config),
 				slotCount: Number(self.config.slotCount),
 				scriptCount: Number(self.config.scriptCount),
 				nameSetCount: Number(self.config.nameSetCount),

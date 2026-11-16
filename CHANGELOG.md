@@ -11,6 +11,14 @@ Nothing yet.
 
 ## [0.1.1] - 2026-11-16
 
+### Added
+
+- The settings page now shows the console's External Devices row (Type, Name, IP Address,
+  Send, Rcv, Enabled) filled in with the values to enter on the console, using this
+  computer's address on the console's network and the saved ports.
+- The web page has a Setup tab with a picture of the console's External Control page
+  holding the same values, and opens on it when the console isn't answering.
+
 ### Fixed
 
 - The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."

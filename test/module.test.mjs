@@ -268,6 +268,9 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 	assert.equal(status.consoleName, 'SimQuantum')
 	assert.equal(status.counts.Input_Channels, 12)
 	assert.ok(status.scopeDefs.length >= 9 && status.sections.Input_Channels)
+	assert.equal(status.setup.send, MODULE_PORT)
+	assert.equal(status.setup.rcv, CONSOLE_PORT)
+	assert.equal(status.setup.type, 'DiGiCo Pad')
 
 	const lib = (await http('GET', '/api/lib')).data
 	const snap = lib.slots['4']

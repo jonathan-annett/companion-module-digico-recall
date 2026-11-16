@@ -15,6 +15,13 @@ It talks to the console the same way the DiGiCo iPad app does.
 3. Switch the device on in the list (green tick).
 4. In this connection's settings enter the console's IP address and the same two ports.
 
+The settings page shows the device row exactly as it should appear on the console, with
+this computer's address and the ports filled in. The web page's **Setup** tab shows the
+same thing as a picture of the console's page.
+
+Leave "OSC generic" off; this module doesn't use it. If the console is the DiGiCo offline
+software on a Windows PC, allow inbound UDP on the receive port through Windows Firewall.
+
 The console accepts one iPad-type device. To keep using a real iPad as well, turn on
 **Relay a real iPad through this module** and point the iPad app at the Companion computer
 instead of the console.
