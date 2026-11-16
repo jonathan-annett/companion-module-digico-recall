@@ -549,13 +549,14 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			at('foot', 66, 543, 119, 20, st.online && saved && st.consoleName ? st.consoleName : '(the Console Name)'),
 			input,
 			su ? hint(150, 386, '▲ set this on the console', true)
-				: hint(203, 518, '▼ type the IP shown here on your console', true))
+				: hint(203, 518, '▼ type the IP shown here on your console', true),
+			su ? h('div', { class: 'hint', style: 'right:calc(8px * var(--k));top:calc(540px * var(--k))' }, '▼ then press load') : null)
 		var message
 		if (!known) message = 'On the console open Setup > External Control. At the bottom is a line reading "Local: ... IP: ...". Type that IP address into the box on the picture.'
 		else if (!su) message = 'Working out this computer’s address…'
 		else if (!su.ip) message = 'This computer has no network address. Connect it to the console’s network and try again.'
 		else if (!su.ipMatched) message = 'None of this computer’s addresses (' + [su.ip].concat(su.otherIps).join(', ') + ') is on the same network as ' + su.consoleIp + '. ' + su.ip + ' is shown as a guess; check the console address, or put both machines on the same network.'
-		else message = 'This computer is ' + su.ip + ' on the console’s network. On the console, press "add device", choose DiGiCo Pad, and enter the highlighted IP Address, Send and Rcv. Then touch Enabled so it shows a tick, and make sure Enable External Control says YES.'
+		else message = 'This computer is ' + su.ip + ' on the console’s network. On the console, press "add device", choose DiGiCo Pad, and enter the highlighted IP Address, Send and Rcv. Then touch Enabled so it shows a tick, and make sure Enable External Control says YES. Finally press "load" next to "commands allowed" and choose the iPad command set (for example ipad_q3 on a Quantum 338). Without a command set loaded the console ignores this module.'
 
 		return h('div', { class: 'detail' },
 			h('h2', {}, 'Console setup'),

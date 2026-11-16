@@ -38,7 +38,9 @@ function consoleRowFields(config) {
 	const setup = consoleSetup(config)
 	const cell = (id, label, value, width) => ({ type: 'static-text', id, label, value: String(value), width })
 	const ip = setup.ip || 'this computer’s IP address'
-	let note = 'Set Enable External Control to YES, press "add device", and fill in the row as shown above.'
+	let note =
+		'Set Enable External Control to YES, press "add device", and fill in the row as shown above. Then press "load" ' +
+		'next to "commands allowed" and choose the iPad command set (for example ipad_q3 on a Quantum 338).'
 	if (setup.ip && !setup.ipMatched) {
 		note += ` This computer has no address on the same network as ${setup.consoleIp || 'the console'}; ${setup.ip} is a guess.`
 	}

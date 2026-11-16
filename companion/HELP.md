@@ -13,7 +13,10 @@ It talks to the console the same way the DiGiCo iPad app does.
 2. Add a device, type **DiGiCo Pad**. Enter the IP address of the computer running
    Companion, a **send port** (default here: 8000) and a **receive port** (default 8001).
 3. Switch the device on in the list (green tick).
-4. In this connection's settings enter the console's IP address and the same two ports.
+4. Press **load** next to "commands allowed" at the bottom of that page and choose the iPad
+   command set. The name depends on the console; on a Quantum 338 it is `ipad_q3`. Until a
+   command set is loaded the console ignores the module.
+5. In this connection's settings enter the console's IP address and the same two ports.
 
 The easiest way to get the values right is the web page's **Setup** tab (address under
 "Web page" below). It shows the console's External Control page: type the IP from the
