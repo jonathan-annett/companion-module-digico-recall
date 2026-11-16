@@ -609,14 +609,14 @@ table.log .was { color: var(--dim); }
 			h('details', { open: METERS.running || METERS.captures.length > 0 },
 				h('summary', {}, 'Meter capture (diagnostic)', h('span', { class: 'count' }, METERS.running ? 'recording\u2026' : METERS.captures.length + ' held')),
 				h('div', { style: 'padding: 0 12px 10px' },
-					h('p', { class: 'note' }, 'Records everything meter-related the console sends for 10 seconds, and asks it for the known meter addresses. It only reads; nothing on the console is changed. Run it a few times with signal on the channel you last touched, download each file, and send them to the module\u2019s maintainer so level metering can be built.'),
+					h('p', { class: 'note' }, S.status.relay ? 'The iPad relay is on, so this records everything the iPad and the console say to each other for 10 seconds and sends nothing of its own. Start it, then on the iPad open a channel with signal and look at its meters, the EQ and the dynamics. Download each file and send them to the module\u2019s maintainer.' : 'Records everything meter-related the console sends for 10 seconds, and asks it for the known meter addresses. It only reads; nothing on the console is changed. Run it a few times with signal on the channel you last touched, download each file, and send them to the module\u2019s maintainer so level metering can be built. With a real iPad relayed through the module (see the settings) it records what the iPad app asks for instead, which is better still.'),
 					h('div', { class: 'bar' },
 						h('button', { class: 'b' + (METERS.running ? '' : ' go'), disabled: METERS.running, onclick: function () {
 							api('api/meters/capture', { seconds: 10 }).then(function () { METERS.running = true; render() }).catch(fail)
 						} }, METERS.running ? 'Recording for 10 seconds\u2026' : 'Capture meters for 10 seconds')),
 					METERS.captures.slice().reverse().map(function (c) {
 						return h('div', { class: 'bar' },
-							h('span', {}, when(c.when) + ' \u00b7 ' + c.meterDatagrams + ' meter packets of ' + c.datagramsReceived + ' \u00b7 ' + c.addressesWithValues + ' addresses carried values'),
+							h('span', {}, when(c.when) + ' \u00b7 ' + (c.mode === 'snoop' ? 'iPad snoop \u00b7 ' + c.ipadDatagrams + ' from the iPad, ' + c.datagramsReceived + ' from the console' : c.meterDatagrams + ' meter packets of ' + c.datagramsReceived) + ' \u00b7 ' + c.addressesWithValues + ' addresses carried values'),
 							h('button', { class: 'b', onclick: function () {
 								api('api/meters?id=' + c.id).then(function (full) {
 									var blob = new Blob([JSON.stringify(full)], { type: 'application/json' })

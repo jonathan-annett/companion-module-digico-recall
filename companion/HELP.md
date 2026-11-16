@@ -103,6 +103,10 @@ its contents, and the text of the last one recalled turns yellow.
   few times during a sound check. Download each result from the Log tab ("Meter capture")
   and send the files to the maintainer. If a log folder is set, the files are saved there
   too.
+  - Better still, if you have the DiGiCo iPad app: turn on the iPad relay in the settings,
+    point the app at the Companion computer, and capture while you look at a channel's
+    meters, EQ and dynamics on the iPad. In that mode the module sends nothing itself and
+    records exactly what the app asks the console for and what comes back.
 - The log holds the latest 5,000 entries in memory. It records what the console tells an
   iPad-type device about, so anything the console doesn't announce can't be logged.
 

@@ -132,6 +132,7 @@ export class Engine {
 		this.transport = null
 		this.pollTimer = null
 		this.meterCap = null // a meter capture in progress
+		this.relayActive = false // set by the Companion instance while a real iPad is relayed
 		this.meterCaptures = [] // finished captures, newest last
 	}
 
@@ -180,7 +181,7 @@ export class Engine {
 			this.audit.event(this.online ? 'Console connected' : 'No reply from console')
 			this.changed()
 		}
-		this.transport.query('/Console/Name')
+		if (this.meterCap?.mode !== 'snoop') this.transport.query('/Console/Name')
 	}
 
 	/** Ask the console what it is and how many of everything it has. */
@@ -305,6 +306,7 @@ export class Engine {
 
 	/** Ask for a touched channel's name, so buttons can show "In 5 Vox" rather than "In 5". */
 	async learnName(section, index) {
+		if (this.meterCap?.mode === 'snoop') return // keep the trace free of this module's own traffic
 		const path = `/${section}/${index}/${SECTIONS[section].name}`
 		const name = (await this.queryMany([path])).get(path)?.a[0]
 		if (typeof name !== 'string') return
@@ -704,6 +706,10 @@ export class Engine {
 	// A diagnostic, not a feature: records everything meter-related the console sends for a
 	// few seconds so the format and rate can be worked out from a real desk with audio.
 	// It only listens and sends read queries; it never writes a value to the console.
+	//
+	// With a real iPad relayed through the module it becomes a snoop instead: it sends
+	// nothing of its own and records both directions in full, so the requests the iPad app
+	// makes to get its meters, and what the console sends back, can be read off.
 
 	/**
 	 * @param {number} seconds  how long to record
@@ -725,7 +731,10 @@ export class Engine {
 		for (const t of targets)
 			for (const suffix of meterSuffixes(t.section)) queries.push(`/${t.section}/${t.index}/${suffix}`)
 
+		const snoop = this.relayActive
 		const cap = {
+			mode: snoop ? 'snoop' : 'poll',
+			ipadPackets: [], // snoop: everything the iPad sent to the console
 			id: String(Date.now()),
 			when: new Date().toISOString(),
 			started: Date.now(),
@@ -741,19 +750,21 @@ export class Engine {
 			timers: [],
 		}
 		this.meterCap = cap
-		cap.timers.push(
-			setTimeout(() => {
-				const poll = () => {
-					if (this.meterCap !== cap || !this.transport) return
-					cap.pollRounds++
-					for (const q of cap.queries) this.transport.query(q)
-				}
-				poll()
-				cap.timers.push(setInterval(poll, METER_POLL_MS))
-			}, cap.listenOnlyMs),
-		)
+		if (snoop) cap.queries = [] // the iPad does the asking
+		if (!snoop)
+			cap.timers.push(
+				setTimeout(() => {
+					const poll = () => {
+						if (this.meterCap !== cap || !this.transport) return
+						cap.pollRounds++
+						for (const q of cap.queries) this.transport.query(q)
+					}
+					poll()
+					cap.timers.push(setInterval(poll, METER_POLL_MS))
+				}, cap.listenOnlyMs),
+			)
 		cap.timers.push(setTimeout(() => this.finishMeterCapture(), seconds * 1000))
-		this.audit.event(`Meter capture started: ${seconds} s`)
+		this.audit.event(`Meter capture started: ${seconds} s${snoop ? ', snooping on the relayed iPad' : ''}`)
 		this.changed()
 		return true
 	}
@@ -769,7 +780,7 @@ export class Engine {
 			// kept as raw hex below
 		}
 		const text = buf.toString('latin1', 0, Math.min(buf.length, 200))
-		const meterish = !messages.length || /meter/i.test(text)
+		const meterish = cap.mode === 'snoop' || !messages.length || /meter/i.test(text)
 		if (!meterish) {
 			for (const m of messages) {
 				const pattern = m.path.replace(/\/\d+(?=\/|$)/g, '/*')
@@ -782,6 +793,24 @@ export class Engine {
 			return
 		}
 		cap.packets.push({
+			ms: Date.now() - cap.started,
+			bytes: buf.length,
+			hex: buf.toString('hex', 0, Math.min(buf.length, 1024)),
+			messages: messages.map((m) => ({ path: m.path, types: m.types, args: m.args })),
+		})
+	}
+
+	/** Called for every datagram a relayed iPad sends while a capture runs. */
+	meterTapIpad(buf) {
+		const cap = this.meterCap
+		if (!cap || cap.ipadPackets.length >= METER_PACKET_LIMIT) return
+		let messages = []
+		try {
+			messages = decode(buf)
+		} catch {
+			// kept as raw hex
+		}
+		cap.ipadPackets.push({
 			ms: Date.now() - cap.started,
 			bytes: buf.length,
 			hex: buf.toString('hex', 0, Math.min(buf.length, 1024)),
@@ -815,8 +844,21 @@ export class Engine {
 				}
 			}
 		}
+		// What the iPad asked for, by address pattern, with one example of the arguments
+		const ipadAsked = {}
+		for (const packet of cap.ipadPackets) {
+			for (const m of packet.messages) {
+				const pattern = m.path.replace(/\/\d+(?=\/|$)/g, '/*')
+				const row = (ipadAsked[pattern] ??= { count: 0, types: m.types, example: m.args })
+				row.count++
+			}
+		}
 		const result = {
 			about: 'DiGiCo Recall meter capture. Send this file to the module maintainer.',
+			mode: cap.mode,
+			ipadDatagrams: cap.ipadPackets.length,
+			ipadAsked,
+			ipadPackets: cap.ipadPackets,
 			id: cap.id,
 			when: cap.when,
 			console: this.consoleName,
@@ -857,8 +899,9 @@ export class Engine {
 	/** Captures without their packet lists, for the web page. */
 	meterCaptureList() {
 		return this.meterCaptures.map((c) => {
-			const { packets, ...summary } = c
+			const { packets, ipadPackets, ...summary } = c
 			void packets
+			void ipadPackets
 			return { ...summary, addressesWithValues: Object.values(c.byAddress).filter((row) => row.withValue).length }
 		})
 	}
@@ -909,6 +952,7 @@ export class Engine {
 			scriptHeld: !!this.scriptHeld,
 			audit: this.audit.enabled,
 			meterCapturing: !!this.meterCap,
+			relay: this.relayActive,
 			namesRecording: !!this.namesRec,
 			namesCount: this.namesCount(),
 		}

@@ -45,7 +45,9 @@ presets; stored libraries are converted automatically.
 - **Meter capture (diagnostic).** A METER CAPTURE button, and a control in the Log tab,
   record ten seconds of everything meter-related the console sends, with timings and raw
   bytes, while asking for the known meter addresses. Read-only. The result downloads as a
-  file. This is groundwork for level metering, which needs data from a console with audio.
+  file. With a real iPad relayed through the module it records both directions in full
+  instead and sends nothing itself, showing what the iPad app asks the console for. This is
+  groundwork for level metering, which needs data from a console with audio.
 - Setup help. The web page has a Setup tab built on a picture of the console's External
   Control page: type the console's own address into the box and it shows the device row to
   enter on the console, using this computer's address on that network, and saves the

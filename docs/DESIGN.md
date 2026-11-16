@@ -180,3 +180,8 @@ console and network.
   unasked; after that it polls the candidate meter addresses for the last touched channel
   and the first input, group and aux with `/?` queries. It deliberately sends no writes,
   so it does not try `/Meters/request`; that can be tested once the passive data is in.
+- Maintainer's suggestion: snoop on a real iPad through the relay. When the relay is on,
+  the capture sends no queries and stores every datagram in both directions, with a
+  summary of what the iPad asked for. That should reveal the meter request the app makes
+  without the module having to guess at a write. The relay itself is still untested with a
+  real iPad.

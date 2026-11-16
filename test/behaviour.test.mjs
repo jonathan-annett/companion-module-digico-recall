@@ -971,4 +971,30 @@ test('iPad relay: datagrams pass both ways, and a value written from the iPad co
 	ipad.send(encode('/Input_Channels/8/fader', 'f', [-12]), moduleIpadPort, '127.0.0.1')
 	await until(() => sim.get('/Input_Channels/8/fader') === -12, 'console gets the iPad change')
 	assert.deepEqual(mod.engine.lastTouched, { section: 'Input_Channels', index: 8 })
+
+	// With the relay on, a meter capture snoops: it records what the iPad asks for and
+	// everything the console sends back, and sends no queries of its own
+	assert.equal(mod.engine.status().relay, true)
+	const queriesBefore = sim.queryCount
+	assert.equal(mod.engine.startMeterCapture(0.6), true)
+	ipad.send(encode('/Meters/request/8', 's', ['post']), moduleIpadPort, '127.0.0.1')
+	ipad.send(encode('/Input_Channels/8/EQ/eq_gain_1/?'), moduleIpadPort, '127.0.0.1')
+	for (let i = 0; i < 5; i++) sim.out('/Meters/values', 'ii', [8, 40 + i])
+	sim.surface('/Input_Channels/2/fader', 'f', [-1]) // ordinary traffic is kept too in this mode
+	await until(() => mod.engine.meterCaptures.length === 1, 'capture to finish', 3000)
+	const cap = mod.engine.meterCaptures[0]
+	assert.equal(cap.mode, 'snoop')
+	assert.equal(cap.pollRounds, 0)
+	assert.deepEqual(cap.queries, [])
+	assert.equal(sim.queryCount - queriesBefore, 1, "the only query the console saw was the iPad's own")
+	assert.deepEqual(cap.ipadAsked['/Meters/request/*'], { count: 1, types: 's', example: ['post'] })
+	assert.ok(cap.ipadAsked['/Input_Channels/*/EQ/eq_gain_1/?'])
+	assert.equal(cap.ipadPackets.length, 2)
+	assert.equal(cap.byAddress['/Meters/values'].count, 5)
+	assert.ok(cap.packets.some((pkt) => pkt.messages.some((m) => m.path === '/Input_Channels/2/fader')))
+	assert.ok(
+		cap.packets.some((pkt) => pkt.messages.some((m) => m.path === '/Input_Channels/8/EQ/eq_gain_1')),
+		'the reply to the iPad',
+	)
+	assert.equal(mod.engine.meterCaptureList()[0].ipadPackets, undefined)
 })

@@ -178,6 +178,7 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 				const engine = this.engine
 				if (!engine?.transport) return
 				engine.transport.sendRaw(buf)
+				if (engine.meterCap) engine.meterTapIpad(buf)
 				// Replies to the iPad's own queries must not look like the operator touching a
 				// channel, but values the iPad writes are exactly that.
 				try {
@@ -194,6 +195,7 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 				}
 			})
 			socket.bind(Number(c.ipadRecvPort))
+			this.engine.relayActive = true
 		}
 
 		relayToIpad(buf) {
