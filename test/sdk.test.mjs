@@ -29,6 +29,13 @@ test('manifest, package.json and changelog agree on name and version', () => {
 	assert.ok(fs.existsSync(new URL(`../${manifest.runtime.entrypoint.replace('../', '')}`, import.meta.url)))
 })
 
+test('name shown in Companion: one short product, console models in keywords', () => {
+	// Companion lists a connection as "<manufacturer>: <products joined with ;>"
+	assert.equal(manifest.manufacturer, 'DiGiCo')
+	assert.deepEqual(manifest.products, ['SD/Quantum Recall'])
+	for (const model of ['SD9', 'SD10', 'SD11', 'Quantum 338']) assert.ok(manifest.keywords.includes(model), model)
+})
+
 test('entry point exports an InstanceBase subclass and an UpgradeScripts array', async () => {
 	const main = await import('../src/main.js')
 	assert.equal(typeof main.default, 'function')

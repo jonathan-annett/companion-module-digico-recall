@@ -9,6 +9,16 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
+## [0.1.1] - 2026-11-16
+
+### Fixed
+
+- The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."
+  instead of by name. Companion builds that title from the manifest's manufacturer and
+  product list, which had been filled with console models. The product is now
+  "SD/Quantum Recall", so it lists as "DiGiCo: SD/Quantum Recall". The console models moved
+  to the search keywords.
+
 ## [0.1.0] - 2026-11-16
 
 First test release. **Verified against a simulated console only.** It has not yet been run
@@ -56,5 +66,6 @@ inside Companion against DiGiCo software or a console; see the test log.
   routing and insert assignment) is not available over this link.
 - Requires Companion 4.3 or newer (module API 2.0).
 
-[Unreleased]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jonathan-annett/companion-module-digico-recall/releases/tag/v0.1.0
