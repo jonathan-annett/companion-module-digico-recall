@@ -232,6 +232,109 @@ test('fader to unity: stops short when a setting runs out of range, and says whi
 	assert.equal(sim.received.length, 0)
 })
 
+test('gain nudge: the preamp gain moves and the trim takes it back, so nothing after the trim changes', async (t) => {
+	const { sim, engine } = await rig(t, { gainSettleMs: 10 })
+	const get = strip(sim, 5) // gain 30, trim 3, fader -12
+	sim.received.length = 0
+	const down = await engine.nudgeGain('Input_Channels', 5, -1)
+	await settle(engine)
+	assert.equal(down.text, 'gain 29 dB (-1), trim +4 dB')
+	assert.deepEqual([get('Channel_Input/analog_gain'), get('Channel_Input/trim')], [29, 4])
+	// Only those two were written, the gain first: quieter before louder
+	assert.deepEqual(
+		sim.received.map((m) => m.path.replace('/Input_Channels/5/Channel_Input/', '')),
+		['analog_gain', 'trim'],
+	)
+	assert.deepEqual([get('fader'), get('Dynamics/comp_thresh_1'), get('Aux_Send/1/send_level')], [-12, -20, -6])
+
+	// Up: the trim comes down first, then the gain goes up
+	sim.received.length = 0
+	const up = await engine.nudgeGain('Input_Channels', 5, 2)
+	await settle(engine)
+	assert.equal(up.text, 'gain 31 dB (+2), trim +2 dB')
+	assert.deepEqual(
+		sim.received.map((m) => m.path.replace('/Input_Channels/5/Channel_Input/', '')),
+		['trim', 'analog_gain'],
+	)
+	assert.equal(engine.lastTouched, null, 'the console echoing these is not a touch')
+})
+
+test('gain nudge: tap, tap, tap is three steps; then UNITY gives a new working level', async (t) => {
+	// The operator's sequence: the input is clipping and the fader has been pulled down
+	const { sim, engine } = await rig(t, { gainSettleMs: 5, unityStepMs: 2, preFaderAuxes: [1] })
+	const get = strip(sim, 5) // gain 30, trim 3, fader -12, aux 1 at -6
+	const level = () => get('Channel_Input/analog_gain') + get('Channel_Input/trim') + get('fader')
+	const monitor = () => get('Channel_Input/analog_gain') + get('Channel_Input/trim') + get('Aux_Send/1/send_level')
+	const [mix, mon] = [level(), monitor()]
+	const taps = [
+		engine.nudgeGain('Input_Channels', 5, -1),
+		engine.nudgeGain('Input_Channels', 5, -1),
+		engine.nudgeGain('Input_Channels', 5, -1),
+	]
+	const results = await Promise.all(taps)
+	await settle(engine)
+	assert.deepEqual(
+		results.map((r) => r.gain),
+		[29, 28, 27],
+		'one after another, none lost',
+	)
+	assert.deepEqual([get('Channel_Input/analog_gain'), get('Channel_Input/trim')], [27, 6])
+	assert.deepEqual([level(), monitor()], [mix, mon], 'the mix and the monitor are where they were')
+
+	const unity = await engine.faderToUnity('Input_Channels', 5)
+	await settle(engine)
+	assert.equal(unity.text, 'trim -12 dB, fader at 0 dB')
+	assert.deepEqual([get('Channel_Input/analog_gain'), get('Channel_Input/trim'), get('fader')], [27, -6, 0])
+	assert.deepEqual(
+		[level(), monitor()],
+		[mix, mon],
+		'still the same level, with the preamp 3 dB safer and the fader at unity',
+	)
+})
+
+test('gain nudge: a preamp that moves in fixed steps, and the ends of the range', async (t) => {
+	const { sim, engine } = await rig(t, { gainSettleMs: 10 })
+	const get = strip(sim, 5)
+	// This preamp only takes whole dB: asked for 0.5 less, it stays where it was
+	const handle = sim.handle.bind(sim)
+	sim.handle = (m) => {
+		if (m.path.endsWith('/analog_gain') && m.args.length) m.args[0] = Math.round(m.args[0] + 0.01)
+		handle(m)
+	}
+	const half = await engine.nudgeGain('Input_Channels', 5, -0.5)
+	await settle(engine)
+	assert.deepEqual(
+		[get('Channel_Input/analog_gain'), get('Channel_Input/trim')],
+		[30, 3],
+		'the trim follows what the preamp did, which was nothing',
+	)
+	assert.match(half.text, /the preamp moved 0, not -0.5/)
+	// Asked for 0.5 more, it goes a whole dB: the trim comes down a whole dB to match
+	sim.handle = (m) => {
+		if (m.path.endsWith('/analog_gain') && m.args.length) m.args[0] = Math.ceil(m.args[0] - 0.01)
+		handle(m)
+	}
+	await engine.nudgeGain('Input_Channels', 5, 0.5)
+	await settle(engine)
+	assert.deepEqual([get('Channel_Input/analog_gain'), get('Channel_Input/trim')], [31, 2])
+	sim.handle = handle
+
+	// Ends of the range: a shorter step, then none
+	strip(sim, 6, { 'Channel_Input/analog_gain': -19.5 })
+	assert.match(
+		(await engine.nudgeGain('Input_Channels', 6, -1)).text,
+		/^gain -20 dB \(-0.5\), trim \+3.5 dB \(at the limit\)$/,
+	)
+	await settle(engine)
+	sim.received.length = 0
+	assert.equal((await engine.nudgeGain('Input_Channels', 6, -1)).text, 'cannot move: gain is at its limit')
+	strip(sim, 7, { 'Channel_Input/trim': -40 })
+	assert.equal((await engine.nudgeGain('Input_Channels', 7, 1)).text, 'cannot move: trim is at its limit')
+	assert.equal((await engine.nudgeGain('Group_Outputs', 1, 1)).text, 'inputs only')
+	assert.equal((await engine.nudgeGain('Input_Channels', 5, 12)).text, 'step must be up to 6 dB')
+	assert.equal(sim.received.length, 0)
+})
+
 test('fader to unity: refuses what it should not touch, and says when sends were not adjusted', async (t) => {
 	const { sim, engine } = await rig(t, { unityStepMs: 2 }) // no pre-fader auxes named
 	const get = strip(sim, 3)

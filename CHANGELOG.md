@@ -9,11 +9,24 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.9] - unreleased
+## [0.2.10] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.8 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.9 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.9:
+
+- **GAIN − and GAIN + keys.** For the last touched input, the analogue gain moves by
+  1 dB and the digital trim moves 1 dB the other way: the preamp is driven less (or more)
+  and the level after the trim, and so the whole mix, stays as it was. For an input that
+  is clipping going in: tap GAIN − until the meter is safe, then UNITY for a working
+  fader position. The quieter-making change is sent first. The gain is read back and the
+  trim follows what the preamp actually took. Quick taps are carried out one after
+  another. The action's step can be set from 0.5 to 3 dB.
+- Other channels fed from the same preamp will change level; only the channel the key
+  acts on is compensated.
+- A small RESULT key shows what the last GAIN or UNITY press did.
 
 Since test build 0.2.8:
 

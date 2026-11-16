@@ -384,3 +384,22 @@ console and network.
   trim changes differently (which would matter more than the step size).
 - Still open from the Re-Gain discussion: plus and minus keys that change the analogue
   gain with the trim compensating.
+
+### 2026-11-17: gain nudge, 0.2.10
+
+- The maintainer's use, in his words: a channel gets loud, the operator pulls the fader
+  down, then sees the input meter clipping. Tap down three times and the gain is 3 dB
+  safer; tap UNITY and there is a new working level. Two keys and the UNITY key.
+- GAIN − and GAIN + move the analogue gain and the trim in opposite directions. Nothing
+  else needs to follow, because nothing after the trim sees a change. This is the reverse
+  division of labour from UNITY, which moves trim and fader and leaves the preamp alone.
+- Order: the quieter write first (gain when going down, trim when going up), so the
+  moment between the two writes is a dip of at most one step, never a bump. A 1 dB step
+  is not sub-divided: a preamp may well move only in whole dB.
+- For that reason the gain is read back after it is written and the trim is set from the
+  change the preamp actually made. Tested with a simulated preamp that rounds.
+- Presses are queued, so quick taps do not read the same starting value twice.
+- Limits are the ranges in the command sets: gain -20 to 60, trim -40 to 60.
+- Not compensated, and said in the help: other channels on the same preamp. Whether the
+  console's own gain tracking steps in when the gain is written over this link is not
+  known (M46).

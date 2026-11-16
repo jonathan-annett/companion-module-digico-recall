@@ -110,6 +110,7 @@ export class Engine {
 			queryTimeout: 400,
 			learn: false,
 			unityStepMs: 40, // pause between the steps of a fader-to-unity move
+			gainSettleMs: 60, // how long the preamp is given to take a new gain before it is read back
 			clearTimeout: 10000,
 			audit: false,
 			auditFolder: '',
@@ -138,7 +139,8 @@ export class Engine {
 		this.counts = {}
 		this.names = {}
 		this.consoleName = ''
-		this.unityNote = '' // what the last fader-to-unity did, for the key
+		this.unityNote = '' // what the last fader-to-unity or gain nudge did, for the key
+		this.gainChain = Promise.resolve() // gain nudges run one at a time
 		this.absent = {} // section -> Map(suffix -> captures in a row it went unanswered)
 		this.current = new Map() // address -> { t, a }: the latest value the console has reported
 		this.online = false
@@ -860,6 +862,79 @@ export class Engine {
 			(limitedBy ? ` (stopped by ${limitedBy})` : '') +
 			(pre.length ? '' : '; aux sends not adjusted')
 		return done(true, text, { moved: delta, fader: fader - delta, limitedBy })
+	}
+
+	// ---- gain nudge ---------------------------------------------------------------------
+
+	/**
+	 * Move an input's analogue gain by a step and its digital trim by the same amount the
+	 * other way: the preamp is driven harder or less hard, and the level after the trim,
+	 * and so everything downstream, stays as it was. For an input that is clipping at the
+	 * preamp: nudge down until it is safe, and nothing in the mix moves.
+	 *
+	 * The quieter-making write goes first. The gain is then read back, and the trim is set
+	 * from what the preamp actually took, in case it only moves in fixed steps.
+	 * Presses are carried out one after another, so three quick taps are three steps.
+	 */
+	nudgeGain(section, index, step) {
+		const run = this.gainChain.then(() => this.nudgeGainNow(section, index, step))
+		this.gainChain = run.catch(() => {})
+		return run
+	}
+
+	async nudgeGainNow(section, index, step) {
+		const done = (ok, text, extra = {}) => {
+			this.unityNote = text
+			this.audit.event(`Gain nudge, ${describe(section, index, this.names[section]?.[index])}: ${text}`)
+			this.log(ok ? 'info' : 'warn', `Gain nudge, ${describe(section, index)}: ${text}`)
+			this.changed()
+			return { ok, text, ...extra }
+		}
+		if (section !== 'Input_Channels') return done(false, 'inputs only')
+		step = Number(step)
+		if (!Number.isFinite(step) || step === 0 || Math.abs(step) > 6) return done(false, 'step must be up to 6 dB')
+		const base = `/${section}/${index}/`
+		const GAIN = `${base}Channel_Input/analog_gain`
+		const TRIM = `${base}Channel_Input/trim`
+		const got = await this.queryMany([GAIN, TRIM])
+		const gain = got.get(GAIN)?.a[0]
+		const trim = got.get(TRIM)?.a[0]
+		if (typeof gain !== 'number' || typeof trim !== 'number') return done(false, 'no answer')
+		// As far as both the gain (-20 to 60) and the trim (-40 to 60) allow
+		const room = step < 0 ? Math.min(gain + 20, 60 - trim) : Math.min(60 - gain, trim + 40)
+		const move = Math.sign(step) * Math.min(Math.abs(step), Math.max(0, room))
+		if (Math.abs(move) < 0.05) {
+			const what = (step < 0 ? gain + 20 : 60 - gain) < 0.05 ? 'gain' : 'trim'
+			return done(false, `cannot move: ${what} is at its limit`, { moved: 0 })
+		}
+		const send = (path, v) => {
+			const suffix = path.slice(base.length)
+			this.sendValues(section, index, { [suffix]: { t: got.get(path).t, a: [Math.fround(v)] } }, null)
+		}
+		const settle = async () => {
+			await this.transport?.drained()
+			await new Promise((resolve) => setTimeout(resolve, this.cfg.gainSettleMs))
+		}
+		// Quieter first: going down, the gain; going up, the trim
+		if (move < 0) send(GAIN, gain + move)
+		else send(TRIM, trim - move)
+		await settle()
+		if (move > 0) {
+			send(GAIN, gain + move)
+			await settle()
+		}
+		// What did the preamp take? The trim answers to that, not to what was asked for
+		const after = (await this.queryMany([GAIN])).get(GAIN)?.a[0]
+		const took = typeof after === 'number' ? after - gain : move
+		const newTrim = Math.min(60, Math.max(-40, trim - took))
+		if (move < 0 || Math.abs(took - move) > 0.01) send(TRIM, newTrim)
+		const round = (n) => Math.round(n * 10) / 10
+		const signed = (n) => `${n > 0 ? '+' : ''}${round(n)}`
+		const text =
+			`gain ${round(gain + took)} dB (${signed(took)}), trim ${signed(newTrim)} dB` +
+			(Math.abs(took - move) > 0.01 ? `; the preamp moved ${signed(took)}, not ${signed(move)}` : '') +
+			(Math.abs(move) < Math.abs(step) - 0.01 ? ' (at the limit)' : '')
+		return done(true, text, { moved: took, gain: gain + took, trim: newTrim })
 	}
 
 	/** What is waiting to be stored by the next slot press: { kind, steps }, 'busy', or null. */

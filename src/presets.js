@@ -59,7 +59,14 @@ export function getPresets(label, config) {
 	button('fader_unity', 'Level', 'Fader to unity, level kept (last touched input)', `UNITY\\n${v('touched')}`, [
 		act('fader_unity'),
 	])
-	button('fader_unity_result', 'Level', 'What the last fader to unity did', v('unity'), [], [], '7')
+	// The preamp, with the trim keeping the level: for an input that is clipping going in
+	button('gain_down', 'Level', 'Gain down 1 dB, level kept (last touched input)', `GAIN −\\n${v('touched')}`, [
+		act('gain_nudge', { step: -1 }),
+	])
+	button('gain_up', 'Level', 'Gain up 1 dB, level kept (last touched input)', `GAIN +\\n${v('touched')}`, [
+		act('gain_nudge', { step: 1 }),
+	])
+	button('fader_unity_result', 'Level', 'What the last UNITY or GAIN key did', v('unity'), [], [], '7')
 	button(
 		'target',
 		'Capture',

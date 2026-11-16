@@ -58,6 +58,29 @@ export function getActions(self) {
 				if (t) await e().faderToUnity(t.section, t.index)
 			},
 		},
+		gain_nudge: {
+			name: 'Gain nudge: last touched input, level kept by its trim',
+			description:
+				'Moves the analogue gain of the last touched input by a step and its digital trim the other way, so the ' +
+				'preamp level changes and nothing after it does. For an input clipping at the preamp. Other channels fed ' +
+				'from the same preamp will change level.',
+			options: [
+				{
+					type: 'dropdown',
+					id: 'step',
+					label: 'Step',
+					default: -1,
+					choices: [-3, -2, -1, -0.5, 0.5, 1, 2, 3].map((n) => ({
+						id: n,
+						label: `${n > 0 ? '+' : '−'}${Math.abs(n)} dB`,
+					})),
+				},
+			],
+			callback: async (action) => {
+				const t = e()?.lastTouched
+				if (t) await e().nudgeGain(t.section, t.index, Number(action.options.step))
+			},
+		},
 		slot: {
 			name: 'Slot: store whatever is waiting, otherwise recall',
 			description:
