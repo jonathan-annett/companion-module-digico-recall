@@ -105,16 +105,29 @@ export function getPresets(label, config) {
 		button(`clear_script_${i}`, 'Scripts', `Clear script ${i}`, `CLEAR\\nS${i}`, [act('clear_script', { script: i })])
 	}
 
+	button(
+		'names_record',
+		'Names',
+		'Save names',
+		`SAVE\\nNAMES ${v('names_count')}`,
+		[act('names_record')],
+		[fb('names_recording')],
+	)
+	button(
+		'names_add_all',
+		'Names',
+		'Add all names',
+		'ALL\\nNAMES',
+		[act('names_add_all', { sections: SECTION_IDS })],
+		[fb('names_recording', {}, amber)],
+	)
 	for (const i of ids(config.nameSetCount)) {
-		button(`names_capture_${i}`, 'Names', `Capture names ${i}`, `NAMES\\nSAVE ${i}`, [
-			act('names_capture', { set: i, sections: SECTION_IDS }),
-		])
 		button(
-			`names_restore_${i}`,
+			`names_set_${i}`,
 			'Names',
-			`Restore names ${i}`,
-			`NAMES ${i}\\n${v(`nameset_${i}`)}`,
-			[act('names_restore', { set: i, sections: SECTION_IDS })],
+			`Name set ${i}`,
+			`N${i}\\n${v(`nameset_${i}`)}`,
+			[act('names_set', { set: i, sections: SECTION_IDS })],
 			[fb('nameset_used', { set: i })],
 		)
 	}

@@ -68,8 +68,14 @@ Everything is in the **Presets** tab, ready to drag onto pages.
 
 **Names**
 
-- **NAMES SAVE n** reads every channel, bus, GEQ and control group name into name set n.
-- **NAMES n** writes that set back to the console.
+- **SAVE NAMES**: press it (red), then tap solo on each channel, group or aux whose name you
+  want to keep. Each one is added to a list and the button shows the count. Press a name
+  set button (**N1**, **N2**...) to store the list there. Press SAVE NAMES again to cancel.
+- **ALL NAMES**: while SAVE NAMES is red, adds every name on the console to the list in one
+  go.
+- **N1, N2...**: stores the list if one is waiting, otherwise writes that set's names back
+  to the console. Green means the set holds names. Only the names in the set are written;
+  everything else is left alone.
 
 ## Web page
 

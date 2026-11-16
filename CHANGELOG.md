@@ -27,6 +27,15 @@ Nothing yet.
   command set with the console's "load" button, which the console needs before it will
   respond.
 
+### Changed
+
+- Saving names now works like capturing a channel. Press SAVE NAMES, tap solo on each
+  channel whose name you want, then press a name set button to store the list. The same
+  button restores it later, writing back only the names in the list. ALL NAMES adds every
+  name to the list. The preset buttons "NAMES SAVE n" and "NAMES n" are replaced by
+  SAVE NAMES, ALL NAMES and N1, N2... The 0.1.0 actions "capture every name" and "restore
+  a name set" still exist, so buttons made with 0.1.0 keep working.
+
 ### Fixed
 
 - Recall scope preset buttons wrapped their labels (COM/P, LEVE/L, DELA/Y, NAM/E, OTHE/R).

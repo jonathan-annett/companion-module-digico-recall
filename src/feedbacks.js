@@ -24,6 +24,7 @@ export const FEEDBACK_STYLES = {
 	script_waiting: { bgcolor: COLORS.amber, color: COLORS.black },
 	script_used: { bgcolor: COLORS.purple, color: COLORS.white },
 	nameset_used: { bgcolor: COLORS.green, color: COLORS.white },
+	names_recording: { bgcolor: COLORS.red, color: COLORS.white },
 }
 
 /** @param {{engine: import('./engine.js').Engine | null}} self */
@@ -84,6 +85,7 @@ export function getFeedbacks(self) {
 			[scriptOption],
 			(o) => e().lib.scripts[String(o.script)],
 		),
+		names_recording: boolean('names_recording', 'Names are being saved (tap solos)', [], () => e().namesRec),
 		nameset_used: boolean('nameset_used', 'Name set has names', [setOption], (o) => e().lib.nameSets[String(o.set)]),
 	}
 }

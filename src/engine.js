@@ -51,6 +51,7 @@ export class Engine {
 		this.held = null
 		this.scriptRec = null // null, or { steps: [] } while recording
 		this.scriptHeld = null // recorded steps waiting for a script button
+		this.namesRec = null // null, or { names: { section: { number: name } } } while collecting names
 		this.targetMode = 'original' // original | touched
 		this.lastTouched = null
 		this.lastRecalled = null
@@ -195,6 +196,8 @@ export class Engine {
 		this.lastTouched = { section, index }
 		if (this.mode === 'armed') {
 			void this.captureToHold(section, index)
+		} else if (this.namesRec) {
+			void this.addNameToList(section, index)
 		} else if (!same) this.changed()
 	}
 
@@ -280,6 +283,7 @@ export class Engine {
 
 	/** The "start recording" button. Pressing it again cancels. */
 	toggleArm() {
+		if (this.namesRec) return // one kind of collecting at a time
 		if (this.mode === 'idle') this.mode = 'armed'
 		else {
 			this.mode = 'idle'
@@ -293,6 +297,7 @@ export class Engine {
 		this.held = null
 		this.scriptRec = null
 		this.scriptHeld = null
+		this.namesRec = null
 		this.changed()
 	}
 
@@ -342,7 +347,7 @@ export class Engine {
 			this.changed()
 			return 'stored'
 		}
-		if (this.mode !== 'idle') return 'busy'
+		if (this.mode !== 'idle' || this.namesRec) return 'busy'
 		const snap = this.lib.slots[id]
 		if (!snap) return 'empty'
 		const target = this.resolveTarget(snap)
@@ -402,7 +407,7 @@ export class Engine {
 		} else if (this.scriptRec) {
 			this.scriptHeld = this.scriptRec.steps.length ? this.scriptRec.steps : null
 			this.scriptRec = null
-		} else {
+		} else if (!this.namesRec) {
 			this.scriptRec = { steps: [] }
 		}
 		this.changed()
@@ -418,7 +423,7 @@ export class Engine {
 			this.changed()
 			return 'stored'
 		}
-		if (this.scriptRec || this.mode !== 'idle') return 'busy'
+		if (this.scriptRec || this.mode !== 'idle' || this.namesRec) return 'busy'
 		const script = this.lib.scripts[id]
 		if (!script) return 'empty'
 		let n = 0
@@ -474,6 +479,75 @@ export class Engine {
 		return n
 	}
 
+	/** How many names are in the list being collected. */
+	namesCount() {
+		if (!this.namesRec) return 0
+		return Object.values(this.namesRec.names).reduce((sum, byIndex) => sum + Object.keys(byIndex).length, 0)
+	}
+
+	/**
+	 * The "save names" button: start collecting. Each channel touched after this (solo is
+	 * the easy one) has its name read and added to a list; a name-set button then stores
+	 * the list. Pressing it again throws the list away.
+	 */
+	toggleNamesRecord() {
+		if (this.namesRec) this.namesRec = null
+		else if (this.mode === 'idle' && !this.scriptRec && !this.scriptHeld) this.namesRec = { names: {} }
+		this.changed()
+	}
+
+	async addNameToList(section, index) {
+		const path = `/${section}/${index}/${SECTIONS[section].name}`
+		const got = await this.queryMany([path])
+		const name = got.get(path)?.a[0]
+		if (!this.namesRec || typeof name !== 'string') return
+		;(this.namesRec.names[section] ??= {})[index] = name
+		;(this.names[section] ??= {})[index] = name
+		this.changed()
+	}
+
+	/** While collecting: add every name on the console (or every name of the chosen types). */
+	async addAllNamesToList(sections) {
+		if (!this.namesRec) return 0
+		const names = await this.fetchNames(sections)
+		if (!this.namesRec) return 0
+		for (const [section, byIndex] of Object.entries(names)) {
+			this.namesRec.names[section] = { ...this.namesRec.names[section], ...byIndex }
+		}
+		this.changed()
+		return this.namesCount()
+	}
+
+	/** A name-set button: store the collected list if there is one, otherwise restore the set. */
+	pressNameSet(id, sections) {
+		id = String(id)
+		if (this.namesRec) {
+			const total = this.namesCount()
+			if (!total) return 'busy'
+			this.lib.nameSets[id] = {
+				name: this.lib.nameSets[id]?.name ?? '',
+				when: new Date().toISOString(),
+				names: this.namesRec.names,
+			}
+			this.namesRec = null
+			this.log('info', `Stored ${total} names in name set ${id}`)
+			this.persist()
+			this.changed()
+			return 'stored'
+		}
+		if (!this.lib.nameSets[id]) return 'empty'
+		this.restoreNameSet(id, sections)
+		return 'restored'
+	}
+
+	nameSetLabel(id) {
+		const set = this.lib.nameSets[String(id)]
+		if (!set) return ''
+		if (set.name) return set.name
+		const total = Object.values(set.names).reduce((sum, byIndex) => sum + Object.keys(byIndex).length, 0)
+		return `${total} name${total === 1 ? '' : 's'}`
+	}
+
 	async captureNameSet(id, sections) {
 		const names = await this.fetchNames(sections)
 		const total = Object.values(names).reduce((sum, s) => sum + Object.keys(s).length, 0)
@@ -523,6 +597,7 @@ export class Engine {
 		if (this.mode === 'armed') return 'TOUCH A CHANNEL'
 		if (this.mode === 'capturing') return 'READING'
 		if (this.mode === 'holding') return 'PRESS A SLOT'
+		if (this.namesRec) return this.namesCount() ? `${this.namesCount()} NAMES` : 'TAP SOLOS'
 		if (this.scriptHeld) return 'PRESS A SCRIPT'
 		if (this.scriptRec) return `SCRIPT REC ${this.scriptRec.steps.length}`
 		return 'READY'
@@ -543,6 +618,8 @@ export class Engine {
 			scriptRecording: !!this.scriptRec,
 			scriptSteps: this.scriptRec ? this.scriptRec.steps.length : this.scriptHeld ? this.scriptHeld.length : 0,
 			scriptHeld: !!this.scriptHeld,
+			namesRecording: !!this.namesRec,
+			namesCount: this.namesCount(),
 		}
 	}
 }

@@ -116,22 +116,44 @@ export function getActions(self) {
 			options: [scriptOption],
 			callback: async (action) => e()?.clearScript(Number(action.options.script)),
 		},
+		names_record: {
+			name: 'Names: start saving names (tap solo on each channel)',
+			description:
+				'Press, then tap solo (or move anything) on each channel whose name you want. Then press a name set button to store the list. Press again to cancel.',
+			options: [],
+			callback: async () => e()?.toggleNamesRecord(),
+		},
+		names_add_all: {
+			name: 'Names: add every name to the list being saved',
+			description: 'Only does something after "start saving names".',
+			options: [sectionsOption],
+			callback: async (action) => {
+				await e()?.addAllNamesToList(list(action.options.sections))
+			},
+		},
+		names_set: {
+			name: 'Names: store (if a list is waiting) or restore a name set',
+			options: [setOption, sectionsOption],
+			callback: async (action) => {
+				e()?.pressNameSet(Number(action.options.set), list(action.options.sections))
+			},
+		},
 		names_capture: {
-			name: 'Names: capture from console to a name set',
+			name: 'Names: capture every name straight to a name set',
 			options: [setOption, sectionsOption],
 			callback: async (action) => {
 				await e()?.captureNameSet(Number(action.options.set), list(action.options.sections))
 			},
 		},
 		names_restore: {
-			name: 'Names: restore a name set to the console',
+			name: 'Names: restore a name set to the console (never stores)',
 			options: [setOption, sectionsOption],
 			callback: async (action) => {
 				e()?.restoreNameSet(Number(action.options.set), list(action.options.sections))
 			},
 		},
 		cancel: {
-			name: 'Cancel capture / script recording',
+			name: 'Cancel capture / script recording / saving names',
 			options: [],
 			callback: async () => e()?.cancel(),
 		},

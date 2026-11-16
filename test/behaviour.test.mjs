@@ -232,6 +232,68 @@ test('an empty script recording is discarded rather than stored', async (t) => {
 	assert.equal(engine.pressScript(1), 'empty')
 })
 
+test('save names: tap channels to build a list, store it on a name-set button, restore it later', async (t) => {
+	const { sim, engine, saved } = await rig(t)
+	sim.values.set('/Input_Channels/3/Channel_Input/name', { t: 's', a: ['Snare'] })
+	sim.values.set('/Input_Channels/5/Channel_Input/name', { t: 's', a: ['Vox'] })
+	sim.values.set('/Group_Outputs/2/Buss_Trim/name', { t: 's', a: ['Drums'] })
+
+	assert.equal(engine.pressNameSet(1), 'empty', 'an empty set does nothing')
+	engine.toggleNamesRecord()
+	assert.equal(engine.stateLabel(), 'TAP SOLOS')
+	assert.equal(engine.pressNameSet(1), 'busy', 'nothing to store yet')
+	sim.surface('/Input_Channels/3/solo', 'f', [1])
+	sim.surface('/Input_Channels/5/solo', 'f', [1])
+	sim.surface('/Group_Outputs/2/solo', 'f', [1])
+	sim.surface('/Input_Channels/3/solo', 'f', [0]) // un-soloing the same channel adds nothing new
+	await until(() => engine.namesCount() === 3, 'three names collected')
+	assert.equal(engine.stateLabel(), '3 NAMES')
+
+	// Other buttons are inert while names are being collected
+	sim.received.length = 0
+	engine.toggleArm()
+	assert.equal(engine.mode, 'idle')
+	assert.equal(engine.pressSlot(1), 'busy')
+
+	assert.equal(engine.pressNameSet(1), 'stored')
+	assert.equal(engine.namesRec, null)
+	assert.deepEqual(saved().nameSets['1'].names, {
+		Input_Channels: { 3: 'Snare', 5: 'Vox' },
+		Group_Outputs: { 2: 'Drums' },
+	})
+	assert.equal(engine.nameSetLabel(1), '3 names')
+	await sleep(60)
+	assert.equal(sim.received.length, 0, 'collecting and storing wrote nothing to the console')
+
+	// Later: names change on the console; the button puts back only the saved ones
+	sim.surface('/Input_Channels/3/Channel_Input/name', 's', ['x'])
+	sim.surface('/Group_Outputs/2/Buss_Trim/name', 's', ['y'])
+	sim.surface('/Input_Channels/4/Channel_Input/name', 's', ['Not saved'])
+	assert.equal(engine.pressNameSet(1), 'restored')
+	await until(() => sim.get('/Input_Channels/3/Channel_Input/name') === 'Snare', 'input name back')
+	await until(() => sim.get('/Group_Outputs/2/Buss_Trim/name') === 'Drums', 'group name back')
+	assert.equal(sim.get('/Input_Channels/4/Channel_Input/name'), 'Not saved', 'channels not in the list are left alone')
+})
+
+test('save names: "all names" fills the list, and pressing save names again throws it away', async (t) => {
+	const { engine } = await rig(t)
+	assert.equal(await engine.addAllNamesToList(['Input_Channels']), 0, 'does nothing unless collecting')
+	engine.toggleNamesRecord()
+	assert.equal(await engine.addAllNamesToList(['Input_Channels', 'Aux_Outputs']), 12 + 4)
+	engine.toggleNamesRecord()
+	assert.equal(engine.namesRec, null)
+	assert.equal(engine.pressNameSet(2), 'empty')
+	assert.deepEqual(engine.lib.nameSets, {})
+
+	// Cancel also drops it, and it can't start in the middle of a capture
+	engine.toggleNamesRecord()
+	engine.cancel()
+	assert.equal(engine.namesRec, null)
+	engine.toggleArm()
+	engine.toggleNamesRecord()
+	assert.equal(engine.namesRec, null)
+})
+
 test('learn mode: an unknown parameter is added to captures; solo, meters and names never are', async (t) => {
 	const { sim, engine, saved } = await rig(t, { learn: true })
 	sim.surface('/Input_Channels/2/Mustard/drive', 'f', [0.7])
