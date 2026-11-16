@@ -307,6 +307,24 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 	assert.equal(mod.engine.lib.slots['5'], undefined)
 })
 
+await test('web setup: resolve shows what to enter on the console; apply saves the address and reconnects', async () => {
+	const before = mod.config.host
+	const resolved = (await http('POST', '/api/setup/resolve', { ip: '10.9.8.7' })).data.setup
+	assert.equal(resolved.consoleIp, '10.9.8.7')
+	assert.equal(resolved.send, MODULE_PORT)
+	assert.equal(resolved.rcv, CONSOLE_PORT)
+	assert.equal(mod.config.host, before, 'resolve changes nothing')
+	assert.equal((await http('POST', '/api/setup/resolve', { ip: '999.1.1.1' })).status, 400)
+	assert.equal((await http('POST', '/api/setup/apply', { ip: 'console.local' })).status, 400)
+
+	const slots = Object.keys(mod.engine.lib.slots).length
+	assert.equal((await http('POST', '/api/setup/apply', { ip: '127.0.0.1' })).status, 200)
+	assert.equal(mod.saved.host, '127.0.0.1')
+	assert.equal(Object.keys(mod.engine.lib.slots).length, slots, 'library kept across the reconnect')
+	await until(() => mod.engine.consoleName === 'SimQuantum', 'reconnected')
+	assert.ok((await http('GET', '/')).data.includes('data:image/png;base64,'), 'setup picture is in the page')
+})
+
 await test('library survives a restart and a config edit', async () => {
 	const saved = mod.saved
 	await mod.destroy()

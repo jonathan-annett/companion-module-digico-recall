@@ -1,7 +1,10 @@
 // The browser page served by the module. One self-contained document; it talks to the
 // module through the small JSON API in instance.js using paths relative to its own URL.
 // String.raw keeps the backslashes in the embedded script intact. The embedded script
-// must not contain backticks or dollar-brace sequences.
+// must not contain backticks or dollar-brace sequences. The one substitution is the setup
+// screenshot, placed in the stylesheet.
+
+import { SETUP_IMAGE } from './setup-image.js'
 
 export const PAGE = String.raw`<!doctype html>
 <html lang="en">
@@ -71,20 +74,21 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 .cell input { flex: 1; min-width: 0; }
 .note { color: var(--dim); font-size: 12.5px; max-width: 70ch; }
 .empty-state { color: var(--dim); padding: 40px 0; max-width: 56ch; }
-.dg { background: #b9c2c9; color: #111; border-radius: 4px; padding: 14px 16px 12px; max-width: 640px; font: 13px Arial, Helvetica, sans-serif; }
-.dg-title { background: #5d6b78; color: #fff; text-align: center; font-weight: 700; margin: -14px -16px 12px; padding: 5px; border-radius: 4px 4px 0 0; }
-.dg-line { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; margin-bottom: 14px; }
-.dg-yes { background: #c9b8f5; border: 1px solid #333; padding: 3px 14px; font-weight: 700; }
-.dg-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 6px; }
-.dg-btn { background: #6d6d6d; color: #fff; padding: 3px 14px; font-weight: 700; }
-.dg table { background: #dfe3e6; border: 1px solid #555; }
-.dg th, .dg td { border: 1px solid #777; padding: 4px 8px; text-align: left; font-size: 13px; }
-.dg th { background: #c7cdd2; font-weight: 400; }
-.dg td { color: #3a2fb0; font-weight: 700; height: 26px; }
-.dg td.tick { color: #159a2c; font-size: 17px; text-align: center; }
-.dg-foot { margin-top: 12px; font-size: 12.5px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.dg-local { border: 2px solid #d4380d; background: #fff3c4; padding: 3px 8px; border-radius: 3px; white-space: pre; }
-.dg-arrow { color: #a8200d; font-weight: 700; }
+.shot { position: relative; width: calc(545px * var(--k)); height: calc(602px * var(--k)); --k: 1.5; background-image: url(${SETUP_IMAGE}); background-size: 100% 100%; border-radius: 4px; font-family: Arial, Helvetica, sans-serif; margin-bottom: 18px; }
+.shot-wrap { overflow-x: auto; }
+.shot .at { position: absolute; display: flex; align-items: center; white-space: nowrap; overflow: hidden; font-size: calc(12.5px * var(--k)); padding-left: calc(3px * var(--k)); color: #2c2c7a; }
+.shot .cell { background: #bec6cb; }
+.shot .foot { background: #aeb3b7; color: #111; }
+.shot .name { color: #000; font-weight: 700; }
+.shot .tick { background: #bec6cb; color: #0f9a2a; font-weight: 700; justify-content: center; padding: 0; font-size: calc(15px * var(--k)); }
+.shot .want { outline: calc(2px * var(--k)) solid #d4380d; background: #fff3c4; font-weight: 700; }
+.shot input.at { background: #fff; color: #111; border: calc(1.5px * var(--k)) solid #d4380d; border-radius: 2px; padding: 0 calc(3px * var(--k)); font-family: inherit; }
+.shot input.at::placeholder { color: #9a6a5a; }
+.shot .hint { position: absolute; color: #b3200a; font-weight: 700; font-size: calc(12px * var(--k)); white-space: nowrap; background: rgba(255, 243, 196, 0.94); border: 1px solid #d4380d; border-radius: 3px; padding: calc(2px * var(--k)) calc(6px * var(--k)); }
+.shot .hint.flash { animation: flash 0.9s steps(2, jump-none) infinite; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .shot .hint.flash { animation: none; } }
+@media (max-width: 900px) { .shot { --k: 1; } }
 .steps { max-width: 70ch; padding-left: 20px; }
 .steps li { margin: 6px 0; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none; }
@@ -501,37 +505,70 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 
 	// ---- setup ----------------------------------------------------------------------
 
-	// A picture of the console's External Control page with the values to enter there.
+	// The console's External Control page, with this installation's values drawn on top.
+	// The operator types the console's own address (shown on the console's "Local ... IP"
+	// line); the module works out which of this computer's addresses the console can reach
+	// and shows exactly what to enter in the console's device row.
+	var SETUP = { typed: null, result: null, busy: false }
+
+	function validIp(text) {
+		var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(text).trim())
+		return !!m && m.slice(1).every(function (n) { return Number(n) <= 255 })
+	}
+
 	function viewSetup() {
-		var st = S.status, su = st.setup
-		var row = [su.type, su.name, su.ip || '?', su.send, su.rcv]
-		var blank = function () { return h('tr', {}, [0, 1, 2, 3, 4, 5].map(function () { return h('td', {}) })) }
+		var st = S.status
+		if (SETUP.typed === null) SETUP.typed = st.online ? st.setup.consoleIp : ''
+		var known = validIp(SETUP.typed)
+		var su = known ? (SETUP.result && SETUP.result.consoleIp === SETUP.typed.trim() ? SETUP.result : (st.setup.consoleIp === SETUP.typed.trim() ? st.setup : null)) : null
+		if (known && !su && !SETUP.busy) {
+			SETUP.busy = true
+			api('api/setup/resolve', { ip: SETUP.typed.trim() }).then(function (r) { SETUP.result = r.setup })
+				.catch(fail).then(function () { SETUP.busy = false; if (S.tab === 'setup') render() })
+		}
+		var px = function (x, y, w, hgt) {
+			return 'left:calc(' + x + 'px * var(--k));top:calc(' + y + 'px * var(--k));width:calc(' + w + 'px * var(--k));height:calc(' + hgt + 'px * var(--k))'
+		}
+		var at = function (cls, x, y, w, hgt, text) { return h('div', { class: 'at ' + cls, style: px(x, y, w, hgt) }, text) }
+		var hint = function (x, y, text, flash) {
+			return h('div', { class: 'hint' + (flash ? ' flash' : ''), style: 'left:calc(' + x + 'px * var(--k));top:calc(' + y + 'px * var(--k))' }, text)
+		}
+		var input = h('input', { class: 'at', id: 'consoleip', style: px(203, 543, 104, 19), placeholder: 'console ip here', value: SETUP.typed, inputmode: 'decimal', autocomplete: 'off', spellcheck: 'false',
+			oninput: function (e) {
+				var was = validIp(SETUP.typed)
+				SETUP.typed = e.target.value
+				if (validIp(SETUP.typed) || was) render()
+			} })
+		var saved = known && st.setup.consoleIp === SETUP.typed.trim()
+		var shot = h('div', { class: 'shot' },
+			at('cell name', 92, 362, 89, 19, 'Companion'),
+			at('cell' + (su ? ' want' : ''), 183, 362, 95, 19, su && su.ip ? su.ip : '??'),
+			at('cell' + (su ? ' want' : ''), 280, 362, 42, 19, st.setup.send),
+			at('cell' + (su ? ' want' : ''), 324, 362, 42, 19, st.setup.rcv),
+			at('tick', 368, 362, 39, 19, '✓'),
+			at('foot', 66, 543, 119, 20, st.online && saved && st.consoleName ? st.consoleName : '(the Console Name)'),
+			input,
+			su ? hint(150, 386, '▲ set this on the console', true)
+				: hint(203, 518, '▼ type the IP shown here on your console', true))
+		var message
+		if (!known) message = 'On the console open Setup > External Control. At the bottom is a line reading "Local: ... IP: ...". Type that IP address into the box on the picture.'
+		else if (!su) message = 'Working out this computer’s address…'
+		else if (!su.ip) message = 'This computer has no network address. Connect it to the console’s network and try again.'
+		else if (!su.ipMatched) message = 'None of this computer’s addresses (' + [su.ip].concat(su.otherIps).join(', ') + ') is on the same network as ' + su.consoleIp + '. ' + su.ip + ' is shown as a guess; check the console address, or put both machines on the same network.'
+		else message = 'This computer is ' + su.ip + ' on the console’s network. On the console, press "add device", choose DiGiCo Pad, and enter the highlighted IP Address, Send and Rcv. Then touch Enabled so it shows a tick, and make sure Enable External Control says YES.'
+
 		return h('div', { class: 'detail' },
 			h('h2', {}, 'Console setup'),
-			h('p', { class: 'sub' }, st.online
-				? 'Connected' + (st.consoleName ? ' to ' + st.consoleName : '') + '. These are the values the console is using.'
-				: 'No reply from the console yet. Make its External Control page look like this.'),
-			h('div', { class: 'dg' },
-				h('div', { class: 'dg-title' }, 'External Control'),
-				h('div', { class: 'dg-line' }, 'Enable External Control:', h('span', { class: 'dg-yes' }, 'YES')),
-				h('div', { class: 'dg-head' }, 'External Devices', h('span', { class: 'dg-btn' }, 'add device')),
-				h('table', {},
-					h('tr', {}, ['Type', 'Name', 'IP Address', 'Send', 'Rcv', 'Enabled'].map(function (c) { return h('th', {}, c) })),
-					h('tr', {}, row.map(function (c) { return h('td', {}, c) }), h('td', { class: 'tick' }, '\u2713')),
-					blank(), blank()),
-				h('div', { class: 'dg-foot' },
-					h('span', { class: 'dg-local' }, 'Local: ', st.consoleName || 'console name', '   IP: ', h('b', {}, su.consoleIp || '?')),
-					h('span', { class: 'dg-arrow' }, '\u2190 the console\u2019s own address. This is the IP to enter in Companion.'))),
-			h('ol', { class: 'steps' },
-				h('li', {}, 'On the console open Setup > External Control and set Enable External Control to YES.'),
-				h('li', {}, 'Read the "Local ... IP" line at the bottom of that page (highlighted above). That address goes in this connection\u2019s settings in Companion as "Console IP address". It is currently set to ', h('b', {}, su.consoleIp || 'nothing'), '.'),
-				h('li', {}, 'Press "add device" and choose the DiGiCo Pad type. Name it anything.'),
-				h('li', {}, 'Enter IP Address ', h('b', {}, su.ip || '(this computer\u2019s address)'), ', Send ', h('b', {}, su.send), ', Rcv ', h('b', {}, su.rcv), '.'),
-				h('li', {}, 'Touch the Enabled column so it shows a green tick.'),
-				h('li', {}, 'Leave "OSC generic" off. This module does not use it.')),
-			!su.ipMatched && su.ip ? h('p', { class: 'note' }, 'This computer has no address on the same network as ' + (su.consoleIp || 'the console') + ', so ' + su.ip + ' is a guess. Check the console address in the connection settings.') : null,
-			su.otherIps.length ? h('p', { class: 'note' }, 'This computer\u2019s other addresses: ' + su.otherIps.join(', ') + '.') : null,
-			h('p', { class: 'note' }, 'If it still does not connect: on a Windows PC running the DiGiCo offline software, allow inbound UDP port ' + su.rcv + ' through Windows Firewall, and check that this computer\u2019s own firewall allows incoming connections for Companion.'))
+			h('p', { class: 'sub' }, st.online ? 'Connected' + (st.consoleName ? ' to ' + st.consoleName : '') + ' at ' + st.setup.consoleIp + '.' : 'No reply from the console yet.'),
+			h('div', { class: 'shot-wrap' }, shot),
+			h('p', { class: 'note', style: 'color:var(--text);font-size:14px' }, message),
+			h('div', { class: 'bar' },
+				h('button', { class: 'b' + (known && !saved ? ' go' : ''), disabled: !known || saved, onclick: function () {
+					api('api/setup/apply', { ip: SETUP.typed.trim() }).then(function () { toast('Saved. Connecting to ' + SETUP.typed.trim()); return loadStatus() })
+						.then(render).catch(fail)
+				} }, saved ? 'Companion is using this console address' : 'Use this console address in Companion')),
+			su && su.otherIps.length && su.ipMatched ? h('p', { class: 'note' }, 'This computer’s other addresses: ' + su.otherIps.join(', ') + '.') : null,
+			h('p', { class: 'note' }, 'Leave "OSC generic" off; this module does not use it. If the console is the DiGiCo offline software on a Windows PC, allow inbound UDP port ' + st.setup.rcv + ' through Windows Firewall, and check that this computer’s own firewall allows incoming connections for Companion.'))
 	}
 
 	// ---- shell ----------------------------------------------------------------------
@@ -562,6 +599,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			} }, t[1]))
 		})
 		var main = $('main')
+		var typingIp = document.activeElement && document.activeElement.id === 'consoleip'
 		var scroll = {}
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
@@ -569,6 +607,11 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'scripts' ? viewScripts() : S.tab === 'names' ? viewNames() : S.tab === 'setup' ? viewSetup() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
+		if (typingIp && $('consoleip')) {
+			// Redrawing replaced the box being typed in: put the cursor back
+			$('consoleip').focus()
+			$('consoleip').setSelectionRange($('consoleip').value.length, $('consoleip').value.length)
+		}
 	}
 
 	function loadStatus() {

@@ -49,6 +49,15 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 			return getConfigFields(this.config)
 		}
 
+		/** Change the console address from the web page's Setup tab, save it, and reconnect. */
+		async setConsoleHost(host) {
+			const library = JSON.stringify(this.engine ? this.engine.lib : {})
+			await this.stopEngine()
+			this.config = { ...this.config, host, library }
+			this.saveConfig(this.config)
+			this.startEngine()
+		}
+
 		async handleHttpRequest(request) {
 			return handleHttp(this, request)
 		}

@@ -15,9 +15,11 @@ It talks to the console the same way the DiGiCo iPad app does.
 3. Switch the device on in the list (green tick).
 4. In this connection's settings enter the console's IP address and the same two ports.
 
-The settings page shows the device row exactly as it should appear on the console, with
-this computer's address and the ports filled in. The web page's **Setup** tab shows the
-same thing as a picture of the console's page.
+The easiest way to get the values right is the web page's **Setup** tab (address under
+"Web page" below). It shows the console's External Control page: type the IP from the
+console's "Local ... IP" line into the box, and it shows exactly what to enter in the
+console's device row and saves the console address for you. The settings page lists the
+same row for the saved settings.
 
 Leave "OSC generic" off; this module doesn't use it. If the console is the DiGiCo offline
 software on a Windows PC, allow inbound UDP on the receive port through Windows Firewall.

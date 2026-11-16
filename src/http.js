@@ -59,7 +59,22 @@ export async function handleHttp(self, request) {
 			return json({ ok: true })
 		}
 
+		const needIp = () => {
+			const ip = String(body.ip ?? '').trim()
+			const parts = ip.split('.')
+			if (parts.length !== 4 || !parts.every((n) => /^\d{1,3}$/.test(n) && Number(n) <= 255)) {
+				throw new Error('That is not an IP address')
+			}
+			return ip
+		}
+
 		switch (path) {
+			case '/api/setup/resolve':
+				// What to enter on the console if its address were this one. Changes nothing.
+				return json({ setup: consoleSetup({ ...self.config, host: needIp() }) })
+			case '/api/setup/apply':
+				await self.setConsoleHost(needIp())
+				return json({ ok: true })
 			case '/api/slot':
 				return store('slots', cleanSnapshot)
 			case '/api/script':

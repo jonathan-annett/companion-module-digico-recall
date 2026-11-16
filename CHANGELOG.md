@@ -16,8 +16,12 @@ Nothing yet.
 - The settings page now shows the console's External Devices row (Type, Name, IP Address,
   Send, Rcv, Enabled) filled in with the values to enter on the console, using this
   computer's address on the console's network and the saved ports.
-- The web page has a Setup tab with a picture of the console's External Control page
-  holding the same values, and opens on it when the console isn't answering.
+- The web page has a Setup tab built on a picture of the console's External Control page.
+  Type the console's own address (its "Local ... IP" line) into the box on the picture and
+  the module finds which of this computer's addresses is on that network and shows the
+  device row to enter on the console, with a flashing "set this on the console" pointer.
+  A button saves the console address into the connection and reconnects. The page opens on
+  this tab when the console isn't answering.
 
 ### Fixed
 
