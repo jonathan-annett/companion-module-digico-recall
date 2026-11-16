@@ -14,7 +14,9 @@ It talks to the console the same way the DiGiCo iPad app does.
    Companion, a **send port** (default here: 8000) and a **receive port** (default 8001).
 3. Switch the device on in the list (green tick).
 4. Press **load** next to "commands allowed" at the bottom of that page and choose the iPad
-   command set. The name depends on the console; on a Quantum 338 it is `ipad_q3`. Until a
+   command set. The name depends on the console: `ipad_q3` on a Quantum 338, and on the SD range a name
+   containing the console's model (for example `IPADV2sd8-9-11-12` or `IPAD_SD5-SD7-SD10`).
+   If both a plain and a "V2" set are offered, either works with this module. Until a
    command set is loaded the console ignores the module.
 5. In this connection's settings enter the console's IP address and the same two ports.
 

@@ -134,6 +134,7 @@ export class Engine {
 		this.counts = {}
 		this.names = {}
 		this.consoleName = ''
+		this.absent = {} // section -> Map(suffix -> captures in a row it went unanswered)
 		this.online = false
 		this.lastReply = 0
 		this.sentAt = new Map()
@@ -236,6 +237,7 @@ export class Engine {
 		this.lastReply = Date.now()
 		if (!this.online) {
 			this.online = true
+			this.absent = {} // it may be a different console now
 			this.audit.event(`Console connected${this.consoleName ? `: ${this.consoleName}` : ''}`)
 			this.hooks.onStatus?.(true, 'Connected')
 			this.changed()
@@ -503,14 +505,42 @@ export class Engine {
 
 	// ---- capture ---------------------------------------------------------------------
 
+	/**
+	 * Read every setting of one channel.
+	 *
+	 * The address table covers both console families (eight-band bus EQ on Quantum and
+	 * SD5/7/10; four-band bus EQ with filters on SD8/9/11/12), so on any console some
+	 * addresses get no answer. An address that goes unanswered in two captures of a section
+	 * that otherwise answered is not asked for again until the console reconnects, which
+	 * keeps later captures quick without a console-type setting to get wrong.
+	 */
 	async captureChannel(section, index) {
-		const suffixes = captureSuffixes(section, this.count('Aux_Outputs'), this.lib.learned[section])
+		const absent = (this.absent[section] ??= new Map())
+		const suffixes = captureSuffixes(section, this.count('Aux_Outputs'), this.lib.learned[section]).filter(
+			(suffix) => (absent.get(suffix) ?? 0) < 2,
+		)
 		const prefix = `/${section}/${index}/`
 		const got = await this.queryMany(suffixes.map((s) => prefix + s))
 		const values = {}
 		for (const suffix of suffixes) {
 			const v = got.get(prefix + suffix)
 			if (v) values[suffix] = v
+		}
+		// Only a channel that mostly answered says anything about which addresses exist
+		if (got.size * 2 > suffixes.length) {
+			let dropped = 0
+			for (const suffix of suffixes) {
+				if (suffix in values) absent.delete(suffix)
+				else {
+					absent.set(suffix, (absent.get(suffix) ?? 0) + 1)
+					if (absent.get(suffix) === 2) dropped++
+				}
+			}
+			if (dropped) {
+				const text = `${SECTIONS[section].label}: ${dropped} setting(s) this console does not have will not be asked for again`
+				this.hooks.log?.('info', text)
+				this.audit.event(text)
+			}
 		}
 		const nameValue = values[SECTIONS[section].name]
 		const name = nameValue && typeof nameValue.a[0] === 'string' ? nameValue.a[0] : ''

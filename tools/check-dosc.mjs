@@ -7,6 +7,8 @@
 // reads one and reports:
 //   - anything the module captures that the console's list does not have
 //   - settings the console's list has that the module does not capture
+// The module's list covers two console families; the file says which one it is, and the
+// comparison uses that family's addresses (see onFamily in src/params.js).
 // The .DOSC files belong to DiGiCo and are not included in this repository.
 //
 // File layout, as far as it is understood: a length-prefixed title, then one record per
@@ -16,7 +18,7 @@
 
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { captureSuffixes, meterSuffixes, SECTIONS } from '../src/params.js'
+import { captureSuffixes, meterSuffixes, onFamily, SECTIONS } from '../src/params.js'
 
 const SECTION_CODES = {
 	1: 'Input_Channels',
@@ -26,6 +28,16 @@ const SECTION_CODES = {
 	16: 'Matrix_Outputs',
 	17: 'Graphic_EQ',
 }
+// The older sets ("DiGiCo OSC Commands 686": IPAD_SD5-SD7-SD10, IPAD_SD8-SD9-SD11) number
+// the sections differently, and file control groups under 8 with block 16.
+const OLD_SECTION_CODES = {
+	1: 'Input_Channels',
+	3: 'Aux_Outputs',
+	4: 'Group_Outputs',
+	14: 'Matrix_Outputs',
+	15: 'Graphic_EQ',
+}
+const isOld = (records) => !records.some((record) => record.section === 17)
 const BLOCK_PREFIX = {
 	1: 'Channel_Input/',
 	2: 'Aux_Send/#/',
@@ -72,8 +84,10 @@ export function parseDosc(data) {
 /** Records as { section, suffix, type } using the module's address names. */
 export function doscAddresses(records) {
 	const out = []
+	const old = isOld(records)
 	for (const record of records) {
-		const section = SECTION_CODES[record.section]
+		let section = (old ? OLD_SECTION_CODES : SECTION_CODES)[record.section]
+		if (old && record.section === 8 && record.block === 16) section = 'Control_Groups'
 		if (!section || BLOCK_PREFIX[record.block] === undefined) continue
 		out.push({
 			section,
@@ -91,7 +105,16 @@ const file = isMain ? process.argv[2] : undefined
 if (file) {
 	const { title, records } = parseDosc(fs.readFileSync(file))
 	const addresses = doscAddresses(records)
-	console.log(`${title}: ${records.length} commands, ${addresses.length} of them channel parameters\n`)
+	// Busses with their own filters mean the SD8/9/11/12 family
+	const family = addresses.some((a) => a.section === 'Group_Outputs' && a.suffix.startsWith('Filters/'))
+		? 'compact'
+		: 'large'
+	console.log(`${title}: ${records.length} commands, ${addresses.length} of them channel parameters`)
+	console.log(
+		family === 'compact'
+			? 'Bus EQ: four bands plus filters (the SD8, SD9, SD11, SD12 family)\n'
+			: 'Bus EQ: eight bands, no separate filters (the Quantum, SD5, SD7, SD10 family)\n',
+	)
 	const generic = (suffix) => suffix.replace(/^(Aux_Send|Group_Send)\/\d+\//, '$1/#/')
 	let problems = 0
 	for (const section of Object.keys(SECTIONS)) {
@@ -101,7 +124,7 @@ if (file) {
 			continue
 		}
 		const have = new Set(theirs.map((a) => a.suffix))
-		const captured = [...new Set(captureSuffixes(section, 1).map(generic))]
+		const captured = [...new Set(captureSuffixes(section, 1, [], family).map(generic))]
 		const unknown = captured.filter((suffix) => !have.has(suffix))
 		const meters = meterSuffixes(section).filter((suffix) => !have.has(suffix))
 		const notCaptured = theirs.filter((a) => a.type !== 'meter' && !captured.includes(a.suffix))

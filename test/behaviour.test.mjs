@@ -48,6 +48,48 @@ async function rig(t, cfg = {}, simOpts = {}) {
 	return { sim, engine, logs, saved: () => saved, consolePort, modulePort }
 }
 
+test('console families: addresses a console lacks are left out, then no longer asked for', async (t) => {
+	// An SD9-style console: four-band bus EQ with filters, nothing for bands 5 to 8
+	const { sim, engine, logs } = await rig(t, {}, { family: 'compact' })
+	const queriesFor = async (section, index) => {
+		const before = sim.queryCount
+		const snap = await engine.captureChannel(section, index)
+		return { snap, queries: sim.queryCount - before }
+	}
+	const expected = captureSuffixes('Group_Outputs', 4, [], 'compact')
+	const first = await queriesFor('Group_Outputs', 1)
+	assert.deepEqual(Object.keys(first.snap.values).sort(), [...expected].sort())
+	assert.ok('Filters/lo_filter_freq' in first.snap.values && !('EQ/eq_gain_5' in first.snap.values))
+	const second = await queriesFor('Group_Outputs', 2)
+	assert.ok(
+		logs.some(([, text]) => text === 'Group: 25 setting(s) this console does not have will not be asked for again'),
+	)
+	const third = await queriesFor('Group_Outputs', 1)
+	assert.equal(third.queries, expected.length, 'asks only for what this console has')
+	assert.ok(first.queries > third.queries && second.queries > third.queries)
+	assert.deepEqual(third.snap.values, first.snap.values)
+
+	// A channel that does not exist says nothing about which addresses exist
+	await engine.captureChannel('Aux_Outputs', 99)
+	await engine.captureChannel('Aux_Outputs', 99)
+	assert.equal((await queriesFor('Aux_Outputs', 1)).snap.values['Filters/hi_filter_in'] !== undefined, true)
+
+	// A Quantum-style console drops the bus filters instead
+	const big = await rig(t)
+	await big.engine.captureChannel('Matrix_Outputs', 1)
+	const again = await big.engine.captureChannel('Matrix_Outputs', 2)
+	assert.ok('EQ/eq_gain_8' in again.values && !('Filters/hi_filter_in' in again.values))
+	assert.ok(
+		big.logs.some(([, text]) => text === 'Matrix: 4 setting(s) this console does not have will not be asked for again'),
+	)
+	// ...and starts afresh when the console goes away and comes back
+	big.engine.absent.Matrix_Outputs.set('fader', 2)
+	big.engine.online = false
+	big.sim.surface('/Input_Channels/1/mute', 'f', [1])
+	await until(() => big.engine.online, 'back online')
+	assert.deepEqual(big.engine.absent, {})
+})
+
 test('parameter table: every address has a recall scope, and the dangerous ones are absent', () => {
 	for (const section of SECTION_IDS) {
 		const suffixes = captureSuffixes(section, 4)

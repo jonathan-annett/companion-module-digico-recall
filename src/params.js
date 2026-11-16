@@ -5,15 +5,21 @@
 //
 // Where the names come from:
 // - Parameter names (eq_gain_2, comp_thresh_1 ...) and how many of each there are were
-//   checked on 2026-11-16 against the console's own iPad command set for Quantum 338
-//   (IPAD_Q3, 815 commands). `node tools/check-dosc.mjs <file>` repeats that check for any
-//   console's command set.
+//   checked on 2026-11-16 against the consoles' own iPad command sets: Quantum 338
+//   (IPAD_Q3), SD5/SD7/SD10 and SD8/SD9/SD11/SD12, the last two in both their older and
+//   "V2" versions. `node tools/check-dosc.mjs <file>` repeats that check for any console's
+//   command set.
+// - Those files show two families that differ only on busses (groups, auxes, matrices):
+//   "large"   Quantum 338, SD5, SD7, SD10: eight-band EQ with a pre/post-insert switch,
+//             no separate filters
+//   "compact" SD8, SD9, SD11, SD12: four-band EQ plus high and low pass filters
+//   The table below lists both. The engine notices which addresses a console never
+//   answers and stops asking for them (see Engine.captureChannel).
 // - Section names (Input_Channels ...) and block names (Channel_Input, EQ, Dynamics ...)
 //   are not in that file, which only numbers them. They follow the table published in the
 //   MIT-licensed companion-module-digico-osc project (Andrew Broughton), built by
 //   observing the iPad app.
-// Anything a console doesn't answer is simply left out of the capture, so listing an
-// address that an older console lacks is harmless.
+// Anything a console doesn't answer is simply left out of the capture.
 
 export const SECTIONS = {
 	Input_Channels: { label: 'Input', short: 'In', name: 'Channel_Input/name' },
@@ -61,11 +67,24 @@ const eq = (bandCount) => [
 	...bands(['EQ/dynamic_eq_on', 'EQ/eq_thresh', 'EQ/eq_ratio', 'EQ/eq_attack', 'EQ/eq_release', 'EQ/eq_over-under'], 4),
 ]
 
-// Inputs have a four-band EQ plus high and low pass filters. On Quantum, busses have
-// eight bands and a pre/post-insert switch, and no separate filters; a console with
-// four-band busses simply doesn't answer for bands 5 to 8.
+// Inputs have a four-band EQ plus high and low pass filters on every console. Busses
+// differ by family, so both forms are listed: see onFamily below.
 const EQ = [...eq(4), ...FILTERS]
-const BUSS_EQ = [...eq(8), 'EQ/eq_pre-ins']
+const BUSS_EQ = [...eq(8), 'EQ/eq_pre-ins', ...FILTERS]
+
+const BUSSES = ['Group_Outputs', 'Aux_Outputs', 'Matrix_Outputs']
+
+/**
+ * Whether a console family has an address, going by DiGiCo's command sets.
+ * @param {'large'|'compact'} family  large: Quantum 338, SD5/7/10. compact: SD8/9/11/12.
+ */
+export function onFamily(family, section, suffix) {
+	if (!BUSSES.includes(section)) return true
+	if (suffix.startsWith('Filters/')) return family === 'compact'
+	if (suffix === 'EQ/eq_pre-ins' || /^EQ\/eq_(on|freq|gain|Q|curve|symm_Q)_[5-8]$/.test(suffix))
+		return family === 'large'
+	return true
+}
 
 const COMP = [
 	'Dynamics/comp-multiband-desser',
@@ -138,10 +157,12 @@ const TABLE = {
  * @param {string} section
  * @param {number} auxCount  how many aux sends to include
  * @param {string[]} [learned]  extra suffixes discovered by learn mode
+ * @param {'large'|'compact'|null} [family]  leave out to get both families' addresses
  */
-export function captureSuffixes(section, auxCount, learned = []) {
+export function captureSuffixes(section, auxCount, learned = [], family = null) {
 	const out = []
 	for (const suffix of TABLE[section] ?? []) {
+		if (family && !onFamily(family, section, suffix)) continue
 		if (suffix.includes('#')) {
 			for (let n = 1; n <= auxCount; n++) out.push(suffix.replace('#', String(n)))
 		} else out.push(suffix)

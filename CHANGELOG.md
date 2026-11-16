@@ -9,11 +9,25 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.2] - unreleased
+## [0.2.3] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1, 0.2.0 and 0.2.1 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.2 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.2: the SD-range consoles, checked against their own command sets.
+
+- **SD8, SD9, SD11 and SD12 busses are captured in full.** DiGiCo's iPad command sets for
+  the SD range show two families. Quantum 338, SD5, SD7 and SD10 have an eight-band EQ on
+  groups, auxes and matrices; SD8, SD9, SD11 and SD12 have a four-band EQ plus high and
+  low pass filters there, and those bus filters were not being captured. Inputs, graphic
+  EQs and control groups are the same on all of them.
+- **No console-type setting.** The module asks for both families' settings, and after two
+  captures stops asking for the ones the connected console never answers (25 per bus on
+  the smaller consoles, 4 on the larger). The first two bus captures after connecting take
+  about a second longer; the audit log notes when the list is trimmed.
+- `tools/check-dosc.mjs` reads the older command sets as well as the "V2" ones and says
+  which family a file belongs to.
 
 Reworked after the first sessions with Companion and the Quantum 338 offline software.
 Buttons made with 0.1.0 for scripts, name sets and clearing need replacing with the new

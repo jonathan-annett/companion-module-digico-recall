@@ -207,7 +207,8 @@ console and network.
   inserts), main/alt, alt-input preamp, stereo mode, input type, solo and listen states,
   control group membership, bus solo and sends-on-faders modes, surround pan.
 - DiGiCo's file is not included in the repository. The check can be repeated with
-  `node tools/check-dosc.mjs <file>`; the SD-range command sets are still to do.
+  `node tools/check-dosc.mjs <file>`. The SD-range command sets were done later the same
+  day; see below.
 
 ### 2026-11-16: first real traffic, and gangs
 
@@ -231,3 +232,32 @@ console and network.
   to the other. If it applies the same movement to the partner, writing absolute values
   to both members in turn would not land both on the preset unless their curves already
   matched, and the recall would need to change (for example, write only one member).
+
+### 2026-11-16: the SD-range command sets, 0.2.3
+
+- The maintainer supplied seven files from the SD9, SD10 and SD11 offline software. Four
+  are distinct: `IPAD_SD5-SD7-SD10` and `IPAD_SD8-SD9-SD11` (title "DiGiCo OSC Commands
+  686") and their "V2" versions `IPADV2sd5-7-10` and `IPADV2sd8-9-11-12` (title "...
+  1502"). The Quantum file is "... 1012".
+- The 686 files number the sections differently (aux 3, group 4, matrix 14, graphic EQ
+  15, control groups under 8) but, once that is allowed for, list exactly the same
+  addresses as the V2 file for the same consoles. So old or V2, loaded on the console,
+  makes no difference to this module.
+- `IPADV2sd5-7-10` has the same channel addresses as Quantum 338, plus four "samples"
+  entries of unknown purpose.
+- SD8/9/11/12 differ from that only on busses: 25 fewer EQ addresses per bus (bands 5 to
+  8 and the pre/post-insert switch) and 4 more (bus filters). The four dynamic EQ bands
+  are listed on both.
+- Decision: no console-type setting. A setting can be wrong, and a session moved from an
+  SD9 to an SD10 would need it changed. Instead the table lists both forms and the engine
+  drops, per section, any address unanswered in two captures in which most of the channel
+  did answer; a channel that does not exist teaches nothing. The list is forgotten when
+  the console reconnects. Cost: about a second on each of the first two bus captures.
+- Assumption not yet tested on SD software: a console silently ignores a query for an
+  address it does not have. To be watched for in the audit log on the first SD session,
+  and on Quantum, where the four bus filter addresses are now asked for twice.
+- Recalling a capture made on one family to the other sends the settings the target does
+  not have as well; those are expected to be ignored for the same reason.
+- Every set also lists, outside the channels, snapshot control, session name, console
+  presets ("New Preset", "Recall Scope") and macro buttons. Not used here; noted for the
+  proxy's sniffer and for later tools.

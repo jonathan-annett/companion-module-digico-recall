@@ -8,10 +8,10 @@
 import dgram from 'node:dgram'
 import { pathToFileURL } from 'node:url'
 import { encode, decode } from '../src/osc.js'
-import { SECTIONS, captureSuffixes } from '../src/params.js'
+import { SECTIONS, captureSuffixes, onFamily } from '../src/params.js'
 
 export class SimConsole {
-	constructor({ listenPort, replyPort, replyHost = '127.0.0.1', counts, dropEvery = 0 }) {
+	constructor({ listenPort, replyPort, replyHost = '127.0.0.1', counts, dropEvery = 0, family = 'large' }) {
 		this.opts = { listenPort, replyPort, replyHost }
 		this.counts = {
 			Input_Channels: 12,
@@ -28,7 +28,7 @@ export class SimConsole {
 		this.queryCount = 0
 		for (const [section, total] of Object.entries(this.counts)) {
 			for (let n = 1; n <= total; n++) {
-				for (const suffix of captureSuffixes(section, this.counts.Aux_Outputs)) {
+				for (const suffix of captureSuffixes(section, this.counts.Aux_Outputs, [], family)) {
 					const path = `/${section}/${n}/${suffix}`
 					if (suffix === SECTIONS[section].name)
 						this.values.set(path, { t: 's', a: [`${SECTIONS[section].short}${n}`] })

@@ -12,11 +12,11 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 65 automated tests against a
+**0.x are test releases.** The logic is covered by 66 automated tests against a
 simulated console. It has been connected to the Quantum 338 offline software, but the
-manual test plan has not yet been run there or on a console. The
-parameter names have been checked against DiGiCo's own iPad command set for Quantum 338;
-the SD consoles' command sets still need checking. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).
+manual test plan has not yet been run there or on a console. The parameter names have
+been checked against DiGiCo's own iPad command sets for Quantum 338, SD5/SD7/SD10 and
+SD8/SD9/SD11/SD12; nothing has yet been run on an SD console. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).
 
 Needs Companion 4.3 or newer.
 

@@ -167,13 +167,27 @@ test('command-set checker: reads a .DOSC file and names its commands the way the
 	)
 })
 
-test('parameter table reflects the Quantum 338 command set: eight-band bus EQ, no bus filters, GEQ trim', () => {
-	const group = captureSuffixes('Group_Outputs', 1)
+test('parameter table reflects the command sets: two bus EQ families, GEQ trim, meters', () => {
+	const large = captureSuffixes('Group_Outputs', 1, [], 'large') // Quantum 338, SD5, SD7, SD10
+	const compact = captureSuffixes('Group_Outputs', 1, [], 'compact') // SD8, SD9, SD11, SD12
+	const both = captureSuffixes('Group_Outputs', 1)
 	const input = captureSuffixes('Input_Channels', 1)
-	assert.ok(group.includes('EQ/eq_gain_8') && group.includes('EQ/eq_symm_Q_8') && group.includes('EQ/eq_pre-ins'))
-	assert.ok(!group.includes('EQ/eq_thresh_5'), 'only the first four bands are dynamic')
-	assert.ok(!group.some((suffix) => suffix.startsWith('Filters/')), 'busses have no separate filters')
-	assert.ok(group.includes('Dynamics/gate-duck-comp') && group.includes('Aux_Send/1/send_pre-post'))
+	assert.ok(large.includes('EQ/eq_gain_8') && large.includes('EQ/eq_symm_Q_8') && large.includes('EQ/eq_pre-ins'))
+	assert.ok(!large.some((suffix) => suffix.startsWith('Filters/')), 'large-console busses have no separate filters')
+	assert.ok(compact.includes('EQ/eq_gain_4') && compact.includes('Filters/lo_filter_freq'))
+	assert.ok(!compact.includes('EQ/eq_gain_5') && !compact.includes('EQ/eq_pre-ins'), 'compact busses have four bands')
+	assert.ok(compact.includes('EQ/eq_thresh_4'), 'compact busses still have the dynamic EQ settings')
+	assert.equal(large.length - compact.length, 21, 'the difference the command sets show: 25 fewer, 4 more')
+	assert.deepEqual(
+		[...new Set([...large, ...compact])].sort(),
+		[...both].sort(),
+		'asked for until the console shows which it is',
+	)
+	for (const section of ['Aux_Outputs', 'Matrix_Outputs'])
+		assert.ok(captureSuffixes(section, 1, [], 'compact').includes('Filters/hi_filter_in'), section)
+	assert.ok(!both.includes('EQ/eq_thresh_5'), 'only the first four bands are dynamic')
+	assert.ok(both.includes('Dynamics/gate-duck-comp') && both.includes('Aux_Send/1/send_pre-post'))
+	assert.deepEqual(input, captureSuffixes('Input_Channels', 1, [], 'compact'), 'inputs are the same on every console')
 	assert.ok(input.includes('Filters/hi_filter_freq') && !input.includes('EQ/eq_gain_5'))
 	assert.ok(captureSuffixes('Graphic_EQ', 1).includes('geq__trim'))
 	assert.ok(meterSuffixes('Input_Channels').includes('Channel_Input/post_meter/left'))
