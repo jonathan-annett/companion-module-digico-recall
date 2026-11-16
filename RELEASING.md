@@ -2,6 +2,14 @@
 
 Bitfocus's instructions: <https://companion.free/for-developers/module-development/module-lifecycle/releasing-your-module/>
 
+## Test builds
+
+Companion keeps the copy it already has when a module package with the same version is
+imported again. So every build handed to a tester gets a new version number (bump the
+patch in `package.json` and `companion/manifest.json`, and the heading of the unreleased
+entry in `CHANGELOG.md`), even though it is not tagged or published. Note the build in the
+test log.
+
 ## Every release
 
 1. Decide the version (`major.minor.patch`). Set it in **both** `package.json` and

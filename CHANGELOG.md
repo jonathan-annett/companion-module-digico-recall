@@ -9,7 +9,11 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.0] - unreleased
+## [0.2.1] - unreleased
+
+Test builds are numbered as they are handed over, because Companion will not replace an
+imported module with another build of the same version. 0.1.1 and 0.2.0 were test builds
+and were never published; this entry covers everything since 0.1.0.
 
 Reworked after the first sessions with Companion and the Quantum 338 offline software.
 Buttons made with 0.1.0 for scripts, name sets and clearing need replacing with the new
