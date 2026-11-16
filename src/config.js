@@ -40,7 +40,8 @@ function consoleRowFields(config) {
 	const ip = setup.ip || 'this computer’s IP address'
 	let note =
 		'Set Enable External Control to YES, press "add device", and fill in the row as shown above. Then press "load" ' +
-		'next to "commands allowed" and choose the iPad command set (for example ipad_q3 on a Quantum 338).'
+		'next to "commands allowed" and choose the iPad command set (for example ipad_q3 on a Quantum 338).' +
+		' If the console stops answering, or after changing these settings, set Enable External Control to NO and back to YES.'
 	if (setup.ip && !setup.ipMatched) {
 		note += ` This computer has no address on the same network as ${setup.consoleIp || 'the console'}; ${setup.ip} is a guess.`
 	}

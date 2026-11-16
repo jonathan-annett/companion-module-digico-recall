@@ -699,7 +699,7 @@ table.log .was { color: var(--dim); }
 						.then(render).catch(fail)
 				} }, saved ? 'Companion is using this console address' : 'Use this console address in Companion')),
 			su && su.otherIps.length && su.ipMatched ? h('p', { class: 'note' }, 'This computer’s other addresses: ' + su.otherIps.join(', ') + '.') : null,
-			h('p', { class: 'note' }, 'Leave "OSC generic" off; this module does not use it. If the console is the DiGiCo offline software on a Windows PC, allow inbound UDP port ' + st.setup.rcv + ' through Windows Firewall, and check that this computer’s own firewall allows incoming connections for Companion.'))
+			h('p', { class: 'note' }, 'If the console is not answering, or you have just changed the settings here, set Enable External Control to NO and back to YES on the console: it can stop talking to a device that has been away for a while. Leave "OSC generic" off; this module does not use it. If the console is the DiGiCo offline software on a Windows PC, allow inbound UDP port ' + st.setup.rcv + ' through Windows Firewall, and check that this computer’s own firewall allows incoming connections for Companion.'))
 	}
 
 	// ---- shell ----------------------------------------------------------------------
