@@ -23,6 +23,7 @@ Nothing yet.
   A button saves the console address into the connection and reconnects. The page opens on
   this tab when the console isn't answering.
 
+- The settings page has a link to the module's web page at the top.
 - Setup instructions (help, settings page and Setup tab) now include loading the iPad
   command set with the console's "load" button, which the console needs before it will
   respond.

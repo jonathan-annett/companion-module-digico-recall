@@ -58,9 +58,25 @@ function consoleRowFields(config) {
 	]
 }
 
-export function getConfigFields(config = DEFAULTS) {
+/** Path of the module's web page on this Companion, for a given connection label. */
+export function webPagePath(label) {
+	return `/instance/${encodeURIComponent(label)}/`
+}
+
+export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 	const ipadOnly = { isVisibleExpression: '$(options:ipadEnabled)' }
+	const path = webPagePath(label)
 	return [
+		{
+			type: 'static-text',
+			id: 'webPage',
+			width: 12,
+			label: 'Web page: setup help, captures, scripts and names',
+			value:
+				`<a href="${path}" target="_blank" rel="noopener"><b>Open the DiGiCo Recall web page</b></a>. ` +
+				`It lives at this Companion's own address followed by <b>${path}</b> ` +
+				`(for example http://127.0.0.1:8000${path}). Its Setup tab shows what to enter on the console.`,
+		},
 		...consoleRowFields({ ...DEFAULTS, ...config }),
 		{
 			type: 'static-text',

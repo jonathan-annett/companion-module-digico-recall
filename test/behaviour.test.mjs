@@ -556,6 +556,9 @@ test('settings page shows the console row for the saved ports', () => {
 	assert.equal(fields.consoleRcv.value, '9101')
 	assert.equal(fields.consoleSend.label, 'Send')
 	assert.equal(fields.consoleRcv.label, 'Rcv')
+	// The link to the web page uses the connection's own label
+	const link = getConfigFields({}, 'FOH desk').find((f) => f.id === 'webPage').value
+	assert.ok(link.includes('href="/instance/FOH%20desk/"'), link)
 	const row = ['consoleType', 'consoleName', 'consoleIp', 'consoleSend', 'consoleRcv', 'consoleEnabled']
 	assert.equal(
 		row.reduce((sum, id) => sum + fields[id].width, 0),

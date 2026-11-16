@@ -87,7 +87,8 @@ Everything is in the **Presets** tab, ready to drag onto pages.
 
 ## Web page
 
-Open `http://<companion address>:<port>/instance/<this connection's label>/`
+The connection's settings page has an **Open the DiGiCo Recall web page** link at the top.
+Or open `http://<companion address>:<port>/instance/<this connection's label>/`
 (for example `http://127.0.0.1:8000/instance/digico-recall/`).
 
 - **Captures**: see every value in a capture, edit or remove values, relabel the button,

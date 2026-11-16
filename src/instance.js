@@ -46,7 +46,7 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 		}
 
 		getConfigFields() {
-			return getConfigFields(this.config)
+			return getConfigFields(this.config, this.label)
 		}
 
 		/** Change the console address from the web page's Setup tab, save it, and reconnect. */
