@@ -207,11 +207,21 @@ export class Engine {
 	touch(section, index) {
 		const same = this.lastTouched && this.lastTouched.section === section && this.lastTouched.index === index
 		this.lastTouched = { section, index }
+		if (!same && this.names[section]?.[index] === undefined) void this.learnName(section, index)
 		if (this.armed) {
 			void this.captureToHold(section, index)
 		} else if (this.namesRec) {
 			void this.addNameToList(section, index)
 		} else if (!same) this.changed()
+	}
+
+	/** Ask for a touched channel's name, so buttons can show "In 5 Vox" rather than "In 5". */
+	async learnName(section, index) {
+		const path = `/${section}/${index}/${SECTIONS[section].name}`
+		const name = (await this.queryMany([path])).get(path)?.a[0]
+		if (typeof name !== 'string') return
+		;(this.names[section] ??= {})[index] = name
+		this.changed()
 	}
 
 	// ---- queries ---------------------------------------------------------------------
@@ -233,7 +243,7 @@ export class Engine {
 			if (!this.transport) return got
 			for (let attempt = 0; attempt < 3; attempt++) {
 				const missing = paths.filter((p) => !got.has(p))
-				if (!missing.length) break
+				if (!missing.length || !this.transport) break // nothing left, or the module was stopped
 				await new Promise((resolve) => {
 					let timer = null
 					const batch = {

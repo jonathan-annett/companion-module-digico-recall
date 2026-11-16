@@ -49,6 +49,10 @@ Nothing yet.
 
 ### Fixed
 
+- The GRAB and TO buttons now show a touched channel's name even if it has never been
+  captured; the name is looked up when the channel is first touched.
+- A query still waiting when the connection was stopped or reconfigured could raise an
+  error. Queued queries are now dropped on stop.
 - Recall scope preset buttons wrapped their labels (COM/P, LEVE/L, DELA/Y, NAM/E, OTHE/R).
   The text size is now 14 so each label stays on one line.
 - The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."
