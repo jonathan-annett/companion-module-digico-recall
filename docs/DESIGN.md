@@ -403,3 +403,21 @@ console and network.
 - Not compensated, and said in the help: other channels on the same preamp. Whether the
   console's own gain tracking steps in when the gain is written over this link is not
   known (M46).
+
+### 2026-11-17: newer version notice, 0.2.12
+
+- The maintainer asked whether a connection could update itself like a web app. It
+  cannot, and should not: Companion installs modules, keeps old versions and lets the
+  user choose, which is what makes a show safe. Once a module is in Companion's store,
+  Companion offers new versions.
+- Until then, the compromise he suggested: the web page checks the GitHub releases and
+  offers the package. `src/update.js` picks the newest release that is newer than the
+  running version, is not a draft, has a three-part version tag and has a `.tgz`
+  attached. Test releases (GitHub "pre-release") are offered and marked as such, since
+  every 0.x release is one.
+- Done in the browser, not the module: the computer running Companion at a show often
+  has no internet, a phone or laptop looking at the page may; and the module itself then
+  makes no outside connection at all. Only the public release list is read.
+- The function that chooses is written once and placed in the page as text, so the code
+  that is tested is the code that runs.
+- To be removed when the module is accepted into the store.

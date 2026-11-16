@@ -127,6 +127,14 @@ Each test's title says what it proves. The lists below are generated from the te
 | 9   | command-set checker: reads a .DOSC file and names its commands the way the module does |
 | 10  | parameter table reflects the command sets: two bus EQ families, GEQ trim, meters       |
 
+### test/update.test.mjs: the newer-version notice
+
+| #   | Test                                                                               |
+| --- | ---------------------------------------------------------------------------------- |
+| 1   | offers the newest release that is newer than the running version and has a package |
+| 2   | ignores drafts, releases with no package, odd tags and odd answers                 |
+| 3   | the web page carries the same function, this version and this repository           |
+
 ## 2. Manual test plan
 
 Run these against the DiGiCo offline software and then each console. Record the result in
@@ -229,6 +237,7 @@ node tools/probe.mjs <console-ip> 8001 8000 Graphic_EQ 1
 | 2026-11-17 | 0.2.11 (test build) | Automated suite, 85 tests; package build. Gain keys relabelled at the maintainer's suggestion                                                                                       | Node 22.23.4, Linux                                                                                       | 85 passed, 0 failed; package built. Whether the arrow characters draw on a Stream Deck is for the maintainer to confirm                                                                                                                                                               |
 | 2026-11-16 | 0.2.0 (unreleased)  | Setup tab: type a console address, check the row fills in, save the address                                                                                                         | Headless Chrome against `tools/preview.mjs`                                                               | Works; only the "no matching network card" case could be shown on the test machine                                                                                                                                                                                                    |
 | 2026-11-16 | 0.2.0 (unreleased)  | Web page after the single-slot rework: open a script slot, relabel and save, load names from a slot; Log tab with simulated activity: live update, filter, switch off               | Headless Chrome against `tools/preview.mjs`                                                               | Works, no browser console errors                                                                                                                                                                                                                                                      |
+| 2026-11-17 | 0.2.12 (test build) | Automated suite, 88 tests; newer-version notice in headless Chrome with GitHub's answer simulated: a newer release, nothing newer, and GitHub refusing; package build               | Node 22.23.4, Linux, Chrome                                                                               | 88 passed, 0 failed. Bar shown with the right link; answer remembered across a reload; refusal shows nothing and is retried. Not yet checked against the real GitHub list, which holds no release newer than 0.1.0                                                                    |
 
 ### Console coverage
 

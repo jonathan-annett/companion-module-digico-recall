@@ -9,11 +9,20 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.11] - unreleased
+## [0.2.12] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.10 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.11 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.11:
+
+- **Newer version notice.** The web page looks at this module's releases on GitHub and,
+  when a newer one with a package attached exists, shows a bar with a link to download
+  it and to its notes. The check is made by the browser, at most every six hours, and
+  again on request from the Setup tab; with no internet it does nothing. Nothing is
+  installed: the package is imported into Companion as before. This is for the time
+  before the module is in Companion's store, which will then offer updates itself.
 
 Since test build 0.2.9:
 
