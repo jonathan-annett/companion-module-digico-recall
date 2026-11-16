@@ -760,6 +760,87 @@ test('audit log: written to one CSV file per day when a folder is set', async (t
 	assert.equal(fs.readFileSync(path.join(folder, files[0]), 'utf8').trim().split('\n').length, lines.length)
 })
 
+test('meter capture: records pushed and polled meter data with timing, asks only read queries, saves a file', async (t) => {
+	const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'recall-meters-'))
+	const { sim, engine } = await rig(t, { auditFolder: folder })
+	// A console that pushes a meter stream unasked, answers one meter address when asked,
+	// and also sends an untagged packet the decoder can't read
+	sim.values.set('/Input_Channels/4/Channel_Input/post_meter/left', { t: 'f', a: [-18.5] })
+	sim.values.set('/Group_Outputs/1/Dynamics/GR_meter_1', { t: 'f', a: [3] })
+	const stream = setInterval(() => sim.out('/Meters/values', 'iiii', [1, 40, 2, 55]), 20)
+	t.after(() => clearInterval(stream))
+	sim.surface('/Input_Channels/4/solo', 'f', [1])
+	await until(() => engine.lastTouched?.index === 4, 'touch input 4')
+	sim.received.length = 0
+
+	assert.equal(engine.startMeterCapture(1), true)
+	assert.equal(engine.startMeterCapture(1), false, 'one at a time')
+	assert.equal(engine.status().meterCapturing, true)
+	sim.socket.send(
+		Buffer.concat([Buffer.from('/Meters/raw\0'), Buffer.from([1, 2, 3, 4])]),
+		engine.cfg.recvPort,
+		'127.0.0.1',
+	)
+	sim.surface('/Input_Channels/4/fader', 'f', [-3]) // ordinary traffic: counted, not stored
+	await until(() => engine.meterCaptures.length === 1, 'capture to finish', 3000)
+	const cap = engine.meterCaptures[0]
+
+	assert.equal(engine.status().meterCapturing, false)
+	assert.equal(cap.console, 'SimQuantum')
+	assert.deepEqual(cap.targets[0], { section: 'Input_Channels', index: 4 }, 'the last touched channel comes first')
+	assert.ok(cap.targets.some((x) => x.section === 'Group_Outputs' && x.index === 1))
+	assert.ok(cap.queries.includes('/Input_Channels/4/Channel_Input/post_meter/left'))
+	assert.ok(cap.pollRounds >= 1)
+
+	// The pushed stream: present in the listen-only phase, with values and timing
+	const pushed = cap.byAddress['/Meters/values']
+	assert.ok(pushed.count > 20, `stream packets: ${pushed.count}`)
+	assert.ok(pushed.unasked > 5, 'seen before any query was sent')
+	assert.deepEqual([pushed.min, pushed.max, pushed.types], [1, 55, ['iiii']])
+	const streamPackets = cap.packets.filter((pkt) => pkt.messages[0]?.path === '/Meters/values')
+	assert.ok(
+		streamPackets.every((pkt, i) => i === 0 || pkt.ms >= streamPackets[i - 1].ms),
+		'in time order',
+	)
+	assert.ok(streamPackets[0].hex.startsWith(Buffer.from('/Meters/values').toString('hex')), 'raw bytes are kept')
+
+	// A polled meter: only arrives after the listen-only phase
+	const polled = cap.byAddress['/Input_Channels/*/Channel_Input/post_meter/left']
+	assert.ok(polled.count >= 1 && polled.unasked === 0)
+	assert.equal(polled.max, -18.5)
+	assert.equal(cap.byAddress['/Group_Outputs/*/Dynamics/GR_meter_1'].max, 3)
+
+	// The packet with no type tags is kept raw; ordinary traffic is only counted
+	assert.ok(cap.packets.some((pkt) => pkt.hex.startsWith(Buffer.from('/Meters/raw').toString('hex'))))
+	assert.equal(cap.other['/Input_Channels/*/fader'], 1)
+	assert.ok(!cap.packets.some((pkt) => pkt.messages.some((m) => m.path.endsWith('/fader'))))
+
+	// Reads only: the console received no value writes during the capture
+	assert.equal(sim.received.length, 0)
+
+	// Saved next to the audit log, and summarised without the packet list for the web page
+	const files = fs.readdirSync(folder).filter((name) => name.startsWith('digico-recall-meters-'))
+	assert.equal(files.length, 1)
+	assert.equal(JSON.parse(fs.readFileSync(path.join(folder, files[0]), 'utf8')).meterDatagrams, cap.packets.length)
+	const [summary] = engine.meterCaptureList()
+	assert.equal(summary.packets, undefined)
+	assert.ok(summary.addressesWithValues >= 3)
+})
+
+test('meter capture: a console that sends no meter data still produces a useful, empty result', async (t) => {
+	const { engine } = await rig(t)
+	engine.startMeterCapture(0.3)
+	await until(() => engine.meterCaptures.length === 1, 'capture to finish', 2000)
+	const cap = engine.meterCaptures[0]
+	assert.equal(cap.meterDatagrams, 0)
+	assert.deepEqual(cap.byAddress, {})
+	assert.deepEqual(
+		cap.targets.map((x) => x.section),
+		['Input_Channels', 'Group_Outputs', 'Aux_Outputs'],
+	)
+	assert.ok(cap.queries.length > 30, 'it still says what it asked for')
+})
+
 // ---- through the Companion class ------------------------------------------------------
 
 class FakeBase {

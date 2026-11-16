@@ -92,6 +92,12 @@ await run('names_record')
 await run('names_add_all', { sections: ['Input_Channels', 'Group_Outputs', 'Aux_Outputs'] })
 await run('slot', { slot: slot++ })
 
+// A pretend meter stream, so a meter capture has something in it
+setInterval(
+	() => sim.out('/Meters/values', 'iiii', [1, Math.round(Math.random() * 100), 2, Math.round(Math.random() * 100)]),
+	50,
+)
+
 // Pretend someone is mixing, so the Log tab has something to show
 const moves = [
 	(n) => sim.surface(`/Input_Channels/${n}/fader`, 'f', [Math.fround(-30 + Math.random() * 35)]),

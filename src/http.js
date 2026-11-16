@@ -38,6 +38,14 @@ export async function handleHttp(self, request) {
 			})
 		}
 		if (method === 'GET' && path === '/api/lib') return json(engine.lib)
+		if (method === 'GET' && path === '/api/meters') {
+			const id = String(request.query?.id ?? '')
+			if (id) {
+				const capture = engine.meterCaptures.find((c) => c.id === id)
+				return capture ? json(capture) : json({ error: 'That capture is no longer held' }, 404)
+			}
+			return json({ running: !!engine.meterCap, captures: engine.meterCaptureList() })
+		}
 		if (method === 'GET' && path === '/api/log') {
 			// Entries newer than the last one the page has. seq also moves when a burst grows.
 			const since = Number(request.query?.since) || 0
@@ -115,6 +123,9 @@ export async function handleHttp(self, request) {
 				}
 				return saved()
 			}
+			case '/api/meters/capture':
+				if (!engine.startMeterCapture(Number(body.seconds) || 10)) throw new Error('A meter capture is already running')
+				return json({ ok: true })
 			case '/api/log/enable':
 				engine.audit.setEnabled(!!body.on)
 				return json({ enabled: engine.audit.enabled })

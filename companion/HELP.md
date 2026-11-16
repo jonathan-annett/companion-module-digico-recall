@@ -96,6 +96,13 @@ its contents, and the text of the last one recalled turns yellow.
 - Read the log live in the web page's **Log** tab: filter it ("in 5 eq"), pause it, and
   download it as a CSV file. To keep a permanent record, name a folder in the connection
   settings and the log is also written there, one CSV file per day.
+- **METER CAPTURE** is a diagnostic, there to help build level metering in a future
+  version. It records everything meter-related the console sends for ten seconds and asks
+  the console for the meter addresses it knows of. It only reads; nothing on the console
+  is changed. Touch a channel that has signal, press it (red while recording), and repeat a
+  few times during a sound check. Download each result from the Log tab ("Meter capture")
+  and send the files to the maintainer. If a log folder is set, the files are saved there
+  too.
 - The log holds the latest 5,000 entries in memory. It records what the console tells an
   iPad-type device about, so anything the console doesn't announce can't be logged.
 

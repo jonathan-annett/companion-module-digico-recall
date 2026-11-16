@@ -527,6 +527,7 @@ table.log .was { color: var(--dim); }
 
 	// The audit trail: every change the console reports, and everything the module does.
 	var LOG = { entries: [], seq: 0, enabled: false, filter: '', paused: false, timer: null }
+	var METERS = { running: false, captures: [] }
 
 	function logTime(t) {
 		var d = new Date(t)
@@ -605,6 +606,25 @@ table.log .was { color: var(--dim); }
 					if (!confirm('Clear the log shown here? Anything already written to the log file stays.')) return
 					api('api/log/clear', {}).then(function () { LOG.entries = []; LOG.seq = 0; render() }).catch(fail)
 				} }, 'Clear')),
+			h('details', { open: METERS.running || METERS.captures.length > 0 },
+				h('summary', {}, 'Meter capture (diagnostic)', h('span', { class: 'count' }, METERS.running ? 'recording\u2026' : METERS.captures.length + ' held')),
+				h('div', { style: 'padding: 0 12px 10px' },
+					h('p', { class: 'note' }, 'Records everything meter-related the console sends for 10 seconds, and asks it for the known meter addresses. It only reads; nothing on the console is changed. Run it a few times with signal on the channel you last touched, download each file, and send them to the module\u2019s maintainer so level metering can be built.'),
+					h('div', { class: 'bar' },
+						h('button', { class: 'b' + (METERS.running ? '' : ' go'), disabled: METERS.running, onclick: function () {
+							api('api/meters/capture', { seconds: 10 }).then(function () { METERS.running = true; render() }).catch(fail)
+						} }, METERS.running ? 'Recording for 10 seconds\u2026' : 'Capture meters for 10 seconds')),
+					METERS.captures.slice().reverse().map(function (c) {
+						return h('div', { class: 'bar' },
+							h('span', {}, when(c.when) + ' \u00b7 ' + c.meterDatagrams + ' meter packets of ' + c.datagramsReceived + ' \u00b7 ' + c.addressesWithValues + ' addresses carried values'),
+							h('button', { class: 'b', onclick: function () {
+								api('api/meters?id=' + c.id).then(function (full) {
+									var blob = new Blob([JSON.stringify(full)], { type: 'application/json' })
+									var a = h('a', { href: URL.createObjectURL(blob), download: 'digico-recall-meters-' + c.when.replace(/[:.]/g, '-') + '.json' })
+									document.body.appendChild(a); a.click(); a.remove()
+								}).catch(fail)
+							} }, 'Download'))
+					}))),
 			h('p', { class: 'note', id: 'lognote' }, ''),
 			h('table', { class: 'log' },
 				h('thead', {}, h('tr', {}, ['Time', 'Channel', 'Parameter', 'Change'].map(function (c) { return h('th', {}, c) }))),
@@ -765,7 +785,16 @@ table.log .was { color: var(--dim); }
 		if (!S.dirty && !typing && S.tab !== 'names') reload(false).catch(function () {})
 		if (S.tab === 'setup' && !typing) render()
 	}, 2500)
-	setInterval(function () { if (S.tab === 'log') pollLog().catch(function () {}) }, 1000)
+	setInterval(function () {
+		if (S.tab !== 'log') return
+		pollLog().catch(function () {})
+		api('api/meters').then(function (r) {
+			var changed = r.running !== METERS.running || r.captures.length !== METERS.captures.length
+			METERS.running = r.running
+			METERS.captures = r.captures
+			if (changed && !(document.activeElement && document.activeElement.id === 'logfilter')) render()
+		}).catch(function () {})
+	}, 1000)
 })()
 </script>
 </body>

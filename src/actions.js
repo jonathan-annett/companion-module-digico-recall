@@ -151,6 +151,15 @@ export function getActions(self) {
 				e().audit.setEnabled(mode === 'toggle' ? !e().audit.enabled : mode === 'on')
 			},
 		},
+		meter_capture: {
+			name: 'Diagnostic: capture meter data to a file',
+			description:
+				'Records everything meter-related the console sends for a few seconds, and asks for the known meter addresses. Reads only. Download the result from the Log tab of the web page.',
+			options: [{ type: 'number', id: 'seconds', label: 'Seconds', default: 10, min: 1, max: 60 }],
+			callback: async (action) => {
+				e()?.startMeterCapture(Number(action.options.seconds) || 10)
+			},
+		},
 		cancel: {
 			name: 'Cancel capture / script recording / saving names',
 			options: [],

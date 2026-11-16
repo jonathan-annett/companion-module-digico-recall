@@ -6,6 +6,7 @@ import {
 	SCOPE_IDS,
 	NEVER_LEARN,
 	captureSuffixes,
+	meterSuffixes,
 	isKnownSuffix,
 	scopeOf,
 	parseAddress,
@@ -13,9 +14,14 @@ import {
 } from './params.js'
 import { namesToSteps } from './validate.js'
 import { AuditLog } from './audit.js'
+import { decode } from './osc.js'
+import fs from 'node:fs'
+import nodePath from 'node:path'
 
 const ECHO_WINDOW_MS = 1500
 const STATUS_POLL_MS = 5000
+const METER_POLL_MS = 500
+const METER_PACKET_LIMIT = 30000
 
 function uniqueTargets(targets) {
 	const seen = new Set()
@@ -125,6 +131,8 @@ export class Engine {
 		this.chain = Promise.resolve()
 		this.transport = null
 		this.pollTimer = null
+		this.meterCap = null // a meter capture in progress
+		this.meterCaptures = [] // finished captures, newest last
 	}
 
 	// ---- lifecycle -------------------------------------------------------------------
@@ -136,7 +144,10 @@ export class Engine {
 			recvPort: this.cfg.recvPort,
 			rate: this.cfg.rate,
 			onMessage: (m) => this.onMessage(m),
-			onRaw: this.hooks.onRaw,
+			onRaw: (buf) => {
+				if (this.meterCap) this.meterTap(buf)
+				this.hooks.onRaw?.(buf)
+			},
 			onStatus: (ok, text) => {
 				if (!ok) this.hooks.onStatus?.(false, text)
 			},
@@ -154,6 +165,7 @@ export class Engine {
 		if (this.clearTimer) clearTimeout(this.clearTimer)
 		this.clearTimer = null
 		if (this.batch) this.batch.finish()
+		if (this.meterCap) this.finishMeterCapture()
 		this.audit.stop()
 		await this.transport?.close()
 		this.transport = null
@@ -688,6 +700,169 @@ export class Engine {
 		return this.namesCount()
 	}
 
+	// ---- meter capture -----------------------------------------------------------------
+	// A diagnostic, not a feature: records everything meter-related the console sends for a
+	// few seconds so the format and rate can be worked out from a real desk with audio.
+	// It only listens and sends read queries; it never writes a value to the console.
+
+	/**
+	 * @param {number} seconds  how long to record
+	 * @returns {boolean} false if one is already running or the module is stopped
+	 */
+	startMeterCapture(seconds = 10) {
+		if (this.meterCap || !this.transport) return false
+		seconds = Math.min(60, Math.max(0.2, Number(seconds) || 10))
+		// The last touched channel, plus the first of each kind so there is always something to compare
+		const targets = []
+		const addTarget = (section, index) => {
+			if (meterSuffixes(section).length && !targets.some((t) => t.section === section && t.index === index)) {
+				targets.push({ section, index })
+			}
+		}
+		if (this.lastTouched) addTarget(this.lastTouched.section, this.lastTouched.index)
+		for (const section of ['Input_Channels', 'Group_Outputs', 'Aux_Outputs']) addTarget(section, 1)
+		const queries = ['/Meters/values']
+		for (const t of targets)
+			for (const suffix of meterSuffixes(t.section)) queries.push(`/${t.section}/${t.index}/${suffix}`)
+
+		const cap = {
+			id: String(Date.now()),
+			when: new Date().toISOString(),
+			started: Date.now(),
+			seconds,
+			listenOnlyMs: Math.round(seconds * 300), // first 30%: just listen, to see what arrives unasked
+			targets,
+			queries,
+			pollRounds: 0,
+			received: 0,
+			truncated: false,
+			packets: [], // meter-related datagrams: { ms, hex, messages }
+			other: {}, // everything else, counted by address pattern
+			timers: [],
+		}
+		this.meterCap = cap
+		cap.timers.push(
+			setTimeout(() => {
+				const poll = () => {
+					if (this.meterCap !== cap || !this.transport) return
+					cap.pollRounds++
+					for (const q of cap.queries) this.transport.query(q)
+				}
+				poll()
+				cap.timers.push(setInterval(poll, METER_POLL_MS))
+			}, cap.listenOnlyMs),
+		)
+		cap.timers.push(setTimeout(() => this.finishMeterCapture(), seconds * 1000))
+		this.audit.event(`Meter capture started: ${seconds} s`)
+		this.changed()
+		return true
+	}
+
+	/** Called for every datagram while a capture runs. */
+	meterTap(buf) {
+		const cap = this.meterCap
+		cap.received++
+		let messages = []
+		try {
+			messages = decode(buf)
+		} catch {
+			// kept as raw hex below
+		}
+		const text = buf.toString('latin1', 0, Math.min(buf.length, 200))
+		const meterish = !messages.length || /meter/i.test(text)
+		if (!meterish) {
+			for (const m of messages) {
+				const pattern = m.path.replace(/\/\d+(?=\/|$)/g, '/*')
+				cap.other[pattern] = (cap.other[pattern] ?? 0) + 1
+			}
+			return
+		}
+		if (cap.packets.length >= METER_PACKET_LIMIT) {
+			cap.truncated = true
+			return
+		}
+		cap.packets.push({
+			ms: Date.now() - cap.started,
+			bytes: buf.length,
+			hex: buf.toString('hex', 0, Math.min(buf.length, 1024)),
+			messages: messages.map((m) => ({ path: m.path, types: m.types, args: m.args })),
+		})
+	}
+
+	finishMeterCapture() {
+		const cap = this.meterCap
+		if (!cap) return null
+		this.meterCap = null
+		for (const timer of cap.timers) {
+			clearTimeout(timer)
+			clearInterval(timer)
+		}
+		// Per address: how often, how often unasked, and the range of the numbers carried
+		const byAddress = {}
+		for (const packet of cap.packets) {
+			const list = packet.messages.length ? packet.messages : [{ path: '(not decodable)', types: '', args: [] }]
+			for (const m of list) {
+				const pattern = m.path.replace(/\/\d+(?=\/|$)/g, '/*')
+				const row = (byAddress[pattern] ??= { count: 0, unasked: 0, types: [], withValue: 0, min: null, max: null })
+				row.count++
+				if (packet.ms < cap.listenOnlyMs) row.unasked++
+				if (!row.types.includes(m.types)) row.types.push(m.types)
+				const numbers = m.args.filter((a) => typeof a === 'number')
+				if (numbers.length) {
+					row.withValue++
+					row.min = Math.min(row.min ?? Infinity, ...numbers)
+					row.max = Math.max(row.max ?? -Infinity, ...numbers)
+				}
+			}
+		}
+		const result = {
+			about: 'DiGiCo Recall meter capture. Send this file to the module maintainer.',
+			id: cap.id,
+			when: cap.when,
+			console: this.consoleName,
+			counts: { ...this.counts },
+			seconds: cap.seconds,
+			listenOnlyMs: cap.listenOnlyMs,
+			targets: cap.targets,
+			queries: cap.queries,
+			pollRounds: cap.pollRounds,
+			datagramsReceived: cap.received,
+			meterDatagrams: cap.packets.length,
+			truncated: cap.truncated,
+			byAddress,
+			other: cap.other,
+			packets: cap.packets,
+		}
+		this.meterCaptures.push(result)
+		if (this.meterCaptures.length > 5) this.meterCaptures.shift()
+		const folder = (this.cfg.auditFolder || '').trim()
+		if (folder) {
+			try {
+				fs.mkdirSync(folder, { recursive: true })
+				const stamp = cap.when.replace(/[:.]/g, '-')
+				fs.writeFileSync(nodePath.join(folder, `digico-recall-meters-${stamp}.json`), JSON.stringify(result))
+			} catch (err) {
+				this.log('error', `Could not write the meter capture to ${folder}: ${err.message}`)
+			}
+		}
+		const withValues = Object.values(byAddress).filter((row) => row.withValue).length
+		this.audit.event(
+			`Meter capture finished: ${cap.packets.length} meter packets, ${withValues} addresses carried values`,
+		)
+		this.log('info', `Meter capture: ${cap.packets.length} meter packets of ${cap.received} received`)
+		this.changed()
+		return result
+	}
+
+	/** Captures without their packet lists, for the web page. */
+	meterCaptureList() {
+		return this.meterCaptures.map((c) => {
+			const { packets, ...summary } = c
+			void packets
+			return { ...summary, addressesWithValues: Object.values(c.byAddress).filter((row) => row.withValue).length }
+		})
+	}
+
 	// ---- summaries for buttons and the web page ----------------------------------------
 
 	slotLabel(id) {
@@ -733,6 +908,7 @@ export class Engine {
 			scriptSteps: this.scriptRec ? this.scriptRec.steps.length : this.scriptHeld ? this.scriptHeld.length : 0,
 			scriptHeld: !!this.scriptHeld,
 			audit: this.audit.enabled,
+			meterCapturing: !!this.meterCap,
 			namesRecording: !!this.namesRec,
 			namesCount: this.namesCount(),
 		}

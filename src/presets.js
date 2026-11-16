@@ -112,6 +112,14 @@ export function getPresets(label, config) {
 		[fb('audit_on')],
 	)
 	button('audit_last', 'Log', 'Latest change', v('audit_last'), [], [fb('audit_on')], '7')
+	button(
+		'meter_capture',
+		'Log',
+		'Capture meter data for 10 s (diagnostic)',
+		'METER\\nCAPTURE',
+		[act('meter_capture', { seconds: 10 })],
+		[fb('meter_capturing')],
+	)
 
 	// One kind of slot. Its colour says what it holds; yellow text marks the last one recalled.
 	for (const i of ids(config.slotCount)) {

@@ -185,3 +185,38 @@ export function describe(section, index, name) {
 	const s = SECTIONS[section]
 	return `${s ? s.short : section} ${index}${name ? ` ${name}` : ''}`
 }
+
+// Meter addresses to ask for during a meter capture. These are candidates gathered from
+// open-source projects; none has been confirmed on a console with audio, which is what the
+// capture is for. Reads only: each is sent as a "<address>/?" query.
+const INPUT_METERS = [
+	'Channel_Input/post_meter',
+	'Channel_Input/post_meter/left',
+	'Channel_Input/post_meter/right',
+	'Channel_Input/pre_meter',
+	'Dynamics/gate_meter',
+	'Dynamics/input_meter/left',
+	'fader_meter/left',
+	'fader_meter/right',
+	...bands(['Dynamics/GR_meter', 'EQ/GR_meter'], 4),
+]
+const BUSS_METERS = [
+	'Buss_Trim/post_meter',
+	'Buss_Trim/post_meter/left',
+	'Buss_Trim/post_meter/right',
+	'Buss_Trim/pre_meter',
+	'Dynamics/input_meter/left',
+	'Dynamics/input_meter/right',
+	'fader_meter/left',
+	'fader_meter/right',
+	'Output/meter/left',
+	'Output/meter/right',
+	'Output/meter2',
+	...bands(['Dynamics/GR_meter', 'EQ/GR_meter'], 4),
+]
+
+export function meterSuffixes(section) {
+	if (section === 'Input_Channels') return INPUT_METERS
+	if (section === 'Group_Outputs' || section === 'Aux_Outputs' || section === 'Matrix_Outputs') return BUSS_METERS
+	return []
+}

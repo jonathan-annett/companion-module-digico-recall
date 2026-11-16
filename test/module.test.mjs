@@ -398,6 +398,23 @@ await test('audit log: the LOG button switches it on, the web page reads new ent
 	assert.equal(fb('audit_on'), false)
 })
 
+await test('meter capture: started from the button or the web page, result downloadable from the web page', async () => {
+	assert.equal(fb('meter_capturing'), false)
+	await run('meter_capture', { seconds: 1 })
+	assert.equal(fb('meter_capturing'), true)
+	assert.equal((await http('GET', '/api/meters')).data.running, true)
+	assert.equal((await http('POST', '/api/meters/capture', { seconds: 1 })).status, 400, 'already running')
+	await until(() => mod.engine.meterCaptures.length === 1, 'capture to finish', 3000)
+	assert.equal(fb('meter_capturing'), false)
+	const list = (await http('GET', '/api/meters')).data
+	assert.equal(list.running, false)
+	assert.equal(list.captures.length, 1)
+	assert.equal(list.captures[0].packets, undefined, 'the list is a summary')
+	const full = (await http('GET', '/api/meters', undefined, { id: list.captures[0].id })).data
+	assert.ok(Array.isArray(full.packets) && full.queries.length > 0)
+	assert.equal((await http('GET', '/api/meters', undefined, { id: 'nope' })).status, 404)
+})
+
 await test('library survives a restart and a config edit', async () => {
 	const saved = mod.saved
 	await mod.destroy()

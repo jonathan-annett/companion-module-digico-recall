@@ -42,6 +42,10 @@ presets; stored libraries are converted automatically.
   entry. Also records what the module does and connection changes. A LOG button switches
   it on and off; the web page's Log tab shows it live with a filter and CSV download; a
   folder can be set to keep one CSV file per day.
+- **Meter capture (diagnostic).** A METER CAPTURE button, and a control in the Log tab,
+  record ten seconds of everything meter-related the console sends, with timings and raw
+  bytes, while asking for the known meter addresses. Read-only. The result downloads as a
+  file. This is groundwork for level metering, which needs data from a console with audio.
 - Setup help. The web page has a Setup tab built on a picture of the console's External
   Control page: type the console's own address into the box and it shows the device row to
   enter on the console, using this computer's address on that network, and saves the

@@ -36,6 +36,7 @@ export const FEEDBACK_STYLES = {
 	script_waiting: { bgcolor: COLORS.amber, color: COLORS.black },
 	names_recording: { bgcolor: COLORS.red, color: COLORS.white },
 	audit_on: { bgcolor: COLORS.blue, color: COLORS.white },
+	meter_capturing: { bgcolor: COLORS.red, color: COLORS.white },
 }
 
 /** @param {{engine: import('./engine.js').Engine | null}} self */
@@ -111,5 +112,6 @@ export function getFeedbacks(self) {
 		script_waiting: boolean('script_waiting', 'Script recorded, waiting for a slot', [], () => e().scriptHeld),
 		names_recording: boolean('names_recording', 'Names are being saved (tap solos)', [], () => e().namesRec),
 		audit_on: boolean('audit_on', 'Audit log is on', [], () => e().audit.enabled),
+		meter_capturing: boolean('meter_capturing', 'A meter capture is running', [], () => e().meterCap),
 	}
 }

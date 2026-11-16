@@ -12,7 +12,7 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 55 automated tests against a
+**0.x are test releases.** The logic is covered by 58 automated tests against a
 simulated console. It has not yet been run against DiGiCo software or a console. The
 address list comes from open-source observation of the iPad app and needs confirming on
 each console. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).

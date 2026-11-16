@@ -165,3 +165,18 @@ console and network.
   entry's burst has ended.
 - Structure: `src/audit.js` holds the log and the file writer; the engine reports changes
   and events to it.
+
+### 2026-11-16: meter capture
+
+- Level metering was requested. What is known: the iPad app shows meters, the address
+  table lists per-channel meter addresses plus `/Meters/request`, `/Meters/values` and
+  `/Meters/clear`, another project reports the offline software answers meter queries with
+  no value, and an S-series project describes a subscribe-then-stream scheme. What is not
+  known for SD and Quantum: whether meters are pushed or must be requested, the payload
+  format, the rate and the units.
+- So the first step is a diagnostic. For ten seconds it stores every datagram that looks
+  meter-related (decoded, plus raw hex, with millisecond offsets) and counts everything
+  else by address. The first 30% of the time it only listens, to show what arrives
+  unasked; after that it polls the candidate meter addresses for the last touched channel
+  and the first input, group and aux with `/?` queries. It deliberately sends no writes,
+  so it does not try `/Meters/request`; that can be tested once the passive data is in.
