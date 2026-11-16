@@ -111,6 +111,23 @@ export async function handleHttp(self, request) {
 				}
 				return saved()
 			}
+			case '/api/slot/compare':
+				// What the console has now for each value in the slot
+				needId()
+				if (!engine.lib.slots[id]) throw new Error('That slot is empty')
+				return json({ online: engine.online, steps: await engine.compareSlot(id, !!body.refresh) })
+			case '/api/slot/revert':
+			case '/api/slot/adopt': {
+				// Chosen values of one step: put the captured ones back on the console, or take
+				// the console's into the capture
+				needId()
+				const step = Number(body.step)
+				const suffixes = Array.isArray(body.suffixes) ? body.suffixes.map(String) : []
+				if (!engine.lib.slots[id]?.steps[step]) throw new Error('That slot has no such step')
+				const count =
+					path === '/api/slot/revert' ? engine.revertValues(id, step, suffixes) : engine.adoptValues(id, step, suffixes)
+				return json({ count })
+			}
 			case '/api/slot/recall': {
 				// Send a slot to the channels it was made from. Steps that follow the scope
 				// toggles use the scopes ticked on the page, not the ones lit on the buttons.

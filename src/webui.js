@@ -69,6 +69,13 @@ input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(
 input.n { width: 76px; font-family: var(--mono); }
 input.v { width: 130px; font-family: var(--mono); text-align: right; }
 input.changed { border-color: var(--accent); }
+tr.moved td.k b { color: var(--accent); }
+td.now { color: var(--dim); font-size: 12.5px; }
+td.now b { color: var(--accent); font-family: var(--mono); font-weight: 600; }
+.chip.moved { background: var(--accent); color: var(--accent-ink); margin-left: 8px; }
+button.x.act { font-size: 15px; padding: 0 5px; }
+.bar.cmp { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.bar.cmp.moved { border-color: var(--accent); }
 button.b { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; font: inherit; cursor: pointer; }
 button.b:hover { border-color: var(--dim); }
 button.b.go { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
@@ -250,7 +257,62 @@ table.log .was { color: var(--dim); }
 	}
 
 	// Value tables, grouped by recall scope. Edits write straight into the draft.
-	function valueGroups(values, onchange) {
+	// ---- comparing with the console ------------------------------------------------
+
+	// While a slot is open, what the console has now for each of its values. A value that
+	// differs gets two buttons: put the captured value back on the console, or take the
+	// console's value into the capture.
+	var CMP = { on: true, id: null, steps: null, sig: '', busy: false }
+	function differs(a, b) {
+		if (!a || !b || a.a.length !== b.a.length) return false
+		for (var i = 0; i < a.a.length; i++) {
+			if (typeof a.a[i] === 'number' && typeof b.a[i] === 'number') { if (Math.abs(a.a[i] - b.a[i]) > 0.005) return true }
+			else if (String(a.a[i]) !== String(b.a[i])) return true
+		}
+		return false
+	}
+	function changedIn(step, i, only) {
+		var now = CMP.steps && CMP.id === S.sel.slots && CMP.steps[i] ? CMP.steps[i].now : null
+		if (!now) return []
+		return Object.keys(step.values).filter(function (sfx) { return (!only || only(sfx)) && differs(step.values[sfx], now[sfx]) })
+	}
+	function pollCompare(refresh) {
+		var id = S.sel.slots
+		if (S.tab !== 'slots' || !CMP.on || !id || !S.lib || !S.lib.slots[id] || CMP.busy) return Promise.resolve()
+		CMP.busy = true
+		return api('api/slot/compare', { id: id, refresh: !!refresh || CMP.id !== id }).then(function (res) {
+			CMP.busy = false
+			if (S.sel.slots !== id) return
+			CMP.id = id; CMP.steps = res.steps
+			var sig = id + JSON.stringify(res.steps)
+			var typing = document.activeElement && /INPUT|SELECT/.test(document.activeElement.tagName)
+			if (sig !== CMP.sig && !typing) { CMP.sig = sig; render() }
+		}, function () { CMP.busy = false })
+	}
+	// Put captured values back on the console (revert) or take the console's into the capture (adopt)
+	function settle(action, jobs) {
+		jobs = jobs.filter(function (j) { return j.suffixes.length })
+		if (!jobs.length) return
+		if (action === 'adopt' && S.dirty) return fail(new Error('Save or discard your own edits first'))
+		var id = S.sel.slots, total = 0
+		jobs.reduce(function (chain, j) {
+			return chain.then(function () { return api('api/slot/' + action, { id: id, step: j.step, suffixes: j.suffixes }) }).then(function (res) { total += res.count })
+		}, Promise.resolve()).then(function () {
+			toast(action === 'revert' ? 'Put ' + total + (total === 1 ? ' value' : ' values') + ' back on the console' : 'Updated ' + total + (total === 1 ? ' value' : ' values') + ' in the capture')
+			return action === 'adopt' ? reload(true) : null
+		}).then(function () { setTimeout(function () { pollCompare() }, 250) }).catch(fail)
+	}
+	function settleButtons(what, jobs) {
+		return [
+			h('button', { class: 'x act', title: 'Put the captured ' + what + ' back on the console', onclick: function (e) { e.preventDefault(); settle('revert', jobs()) } }, '↺'),
+			h('button', { class: 'x act', title: 'Update the capture with the console’s ' + what, onclick: function (e) { e.preventDefault(); settle('adopt', jobs()) } }, '💾'),
+		]
+	}
+	function shown(v) {
+		return v.a.map(function (arg, i) { return v.t[i] === 's' ? arg : Math.round(arg * 10000) / 10000 }).join(', ')
+	}
+
+	function valueGroups(values, onchange, live) {
 		var groups = {}
 		Object.keys(values).forEach(function (suffix) {
 			var sc = scopeOf(suffix)
@@ -258,12 +320,17 @@ table.log .was { color: var(--dim); }
 		})
 		return scopeList().filter(function (s) { return groups[s.id] }).map(function (s) {
 			var body = h('table', {})
-			groups[s.id].forEach(function (suffix) {
+			// values that have moved on the console come first, so they are not lost in a long list
+			var isMoved = function (suffix) { return live && differs(values[suffix], live.now[suffix]) ? 0 : 1 }
+			groups[s.id].slice().sort(function (x, y) { return isMoved(x) - isMoved(y) }).forEach(function (suffix) {
 				var v = values[suffix]
 				var parts = suffix.split('/')
 				var leaf = parts.pop()
-				var tr = h('tr', {},
+				var moved = live && differs(v, live.now[suffix])
+				var tr = h('tr', { class: moved ? 'moved' : '' },
 					h('td', { class: 'k' }, parts.length ? parts.join('/') + '/' : '', h('b', {}, leaf)),
+					h('td', { class: 'r now' }, moved ? ['console now ', h('b', {}, shown(live.now[suffix])), ' ',
+						settleButtons('value', function () { return [{ step: live.step, suffixes: [suffix] }] })] : null),
 					h('td', { class: 'r' }, v.a.map(function (arg, i) {
 						var isText = v.t[i] === 's'
 						return h('input', { class: 'v', type: isText ? 'text' : 'number', step: 'any',
@@ -279,8 +346,12 @@ table.log .was { color: var(--dim); }
 						onclick: function () { delete values[suffix]; tr.remove(); onchange() } }, '×')))
 				body.appendChild(tr)
 			})
-			return h('details', {},
-				h('summary', {}, s.label, h('span', { class: 'count' }, groups[s.id].length + ' values'), h('span', { class: 'grow' }),
+			var movedHere = live ? groups[s.id].filter(function (suffix) { return differs(values[suffix], live.now[suffix]) }) : []
+			return h('details', { open: movedHere.length > 0 },
+				h('summary', {}, s.label, h('span', { class: 'count' }, groups[s.id].length + ' values'),
+					movedHere.length ? [h('span', { class: 'chip moved' }, movedHere.length + ' CHANGED'),
+						settleButtons(s.label + ' values', function () { return [{ step: live.step, suffixes: movedHere }] })] : null,
+					h('span', { class: 'grow' }),
 					h('button', { class: 'x', title: 'Remove all ' + s.label + ' values',
 						onclick: function (e) {
 							e.preventDefault()
@@ -379,19 +450,34 @@ table.log .was { color: var(--dim); }
 						checks[sc.id] = h('input', { type: 'checkbox', checked: (S.status.scopes_on || []).indexOf(sc.id) >= 0 })
 						return h('label', {}, checks[sc.id], ' ' + sc.label)
 					}) : h('span', { class: 'note' }, 'Every step is sent in full.')),
+				(function () {
+					// Live comparison with the console: what has moved since this was captured
+					var jobs = function () { return d.steps.map(function (step, i) { return { step: i, suffixes: changedIn(step, i) } }) }
+					var total = jobs().reduce(function (n, j) { return n + j.suffixes.length }, 0)
+					var ready = CMP.on && CMP.id === id && CMP.steps
+					return h('div', { class: 'bar cmp' + (total ? ' moved' : '') },
+						h('label', {}, h('input', { type: 'checkbox', checked: CMP.on, onchange: function (e) { CMP.on = e.target.checked; CMP.sig = ''; if (CMP.on) pollCompare(true); render() } }), ' Compare with the console'),
+						!CMP.on ? null : !ready ? h('span', { class: 'note' }, 'Reading the console…')
+							: total ? [h('b', {}, total + (total === 1 ? ' value has' : ' values have') + ' changed on the console since this was captured.'),
+								h('button', { class: 'b', onclick: function () { settle('revert', jobs()) } }, '↺ Undo changes made on the console'),
+								h('button', { class: 'b', onclick: function () { settle('adopt', jobs()) } }, '💾 Update capture from the console')]
+								: h('span', { class: 'note' }, 'The console matches this capture.'),
+						ready ? h('button', { class: 'x', title: 'Read every value from the console again', onclick: function () { pollCompare(true) } }, '⟳') : null)
+				})(),
 				d.steps.map(function (step, i) {
 					var followBox = h('input', { type: 'checkbox', checked: !step.fixed, onchange: function (e) { step.fixed = !e.target.checked; dirty(); render() } })
 					return h('details', { open: !many },
 						h('summary', {}, (many ? (i + 1) + '. ' : '') + where(step),
 							h('span', { class: 'chip' + (step.fixed ? '' : ' on') }, step.fixed ? 'SENT IN FULL' : 'FOLLOWS SCOPE'),
 							h('span', { class: 'count' }, Object.keys(step.values).length + ' values'),
+							changedIn(step, i).length ? h('span', { class: 'chip moved' }, changedIn(step, i).length + ' CHANGED') : null,
 							h('span', { class: 'grow' }),
 							many ? h('button', { class: 'x', title: 'Move up', onclick: function (e) { e.preventDefault(); move(i, -1) } }, '↑') : null,
 							many ? h('button', { class: 'x', title: 'Move down', onclick: function (e) { e.preventDefault(); move(i, 1) } }, '↓') : null,
 							many ? h('button', { class: 'x', title: 'Remove this step', onclick: function (e) { e.preventDefault(); d.steps.splice(i, 1); dirty(); render() } }, '×') : null),
 						h('div', { class: 'bar', style: 'padding: 0 12px' }, targetFields(step, dirty),
 							h('label', {}, followBox, ' Only send the scopes that are lit when recalled')),
-						h('div', { style: 'padding: 0 12px 4px' }, valueGroups(step.values, dirty)))
+						h('div', { style: 'padding: 0 12px 4px' }, valueGroups(step.values, dirty, CMP.on && CMP.id === id && CMP.steps && CMP.steps[i] ? { step: i, now: CMP.steps[i].now } : null)))
 				}),
 				h('p', { class: 'note' }, 'Steps run top to bottom. Values are shown exactly as the console reports them: levels and gains in dB, frequencies in Hz, times in seconds, switches as 0 or 1.'),
 			]
@@ -966,6 +1052,7 @@ table.log .was { color: var(--dim); }
 
 	if (kiosk) document.body.className = 'kiosk'
 	setInterval(function () { pollKeys().catch(function () {}) }, 400)
+	setInterval(function () { pollCompare().catch(function () {}) }, 1000)
 	loadStatus().then(function () {
 		if (kiosk) S.tab = 'keys'
 		else if (!S.status.online) S.tab = 'setup' // nothing else is useful until the console answers

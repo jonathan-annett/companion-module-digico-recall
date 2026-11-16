@@ -360,6 +360,88 @@ await test('Keys tab: live keys show what a Stream Deck would, and pressing them
 	assert.equal((await http('POST', '/api/keys/press', { key: 'cancel', held: 2000, layout })).status, 400)
 })
 
+await test('a slot compared with the console: what changed, put values back, or take them into the capture', async () => {
+	await run('cancel')
+	await run('capture', { section: 'Input_Channels', index: 9 })
+	await until(() => mod.engine.mode === 'holding', 'captured')
+	await run('slot', { slot: 8 })
+	const step = () => mod.engine.lib.slots['8'].steps[0]
+	const was = {
+		gain: step().values['Channel_Input/analog_gain'].a[0],
+		fader: step().values.fader.a[0],
+		thresh: step().values['Dynamics/comp_thresh_1'].a[0],
+	}
+	const compare = async (extra = {}) =>
+		(await http('POST', '/api/slot/compare', { id: '8', ...extra })).data.steps[0].now
+	const changed = (now) =>
+		Object.keys(step().values).filter((k) => JSON.stringify(now[k]?.a) !== JSON.stringify(step().values[k].a))
+
+	// Straight after the capture the console matches it, and it has every value
+	let now = await compare()
+	assert.equal(Object.keys(now).length, Object.keys(step().values).length)
+	assert.deepEqual(changed(now), [])
+
+	// The engineer moves three things on the console. No questions are asked of the console:
+	// it announces changes, and that is where the comparison gets them
+	const asked = sim.queryCount
+	sim.surface('/Input_Channels/9/Channel_Input/analog_gain', 'f', [31])
+	sim.surface('/Input_Channels/9/fader', 'f', [-22])
+	sim.surface('/Input_Channels/9/Dynamics/comp_thresh_1', 'f', [-33])
+	await until(() => mod.engine.current.get('/Input_Channels/9/Dynamics/comp_thresh_1')?.a[0] === -33, 'changes heard')
+	now = await compare()
+	assert.deepEqual(changed(now).sort(), ['Channel_Input/analog_gain', 'Dynamics/comp_thresh_1', 'fader'])
+	assert.equal(now.fader.a[0], -22)
+	assert.equal(sim.queryCount, asked, 'no traffic to keep the comparison live')
+
+	// Cherry-pick: keep the new gain in the capture...
+	assert.equal(
+		(await http('POST', '/api/slot/adopt', { id: '8', step: 0, suffixes: ['Channel_Input/analog_gain'] })).data.count,
+		1,
+	)
+	assert.equal(step().values['Channel_Input/analog_gain'].a[0], 31)
+	assert.equal(step().values.fader.a[0], was.fader, 'the fader in the capture is untouched')
+	assert.equal(
+		JSON.parse(mod.saved.library).slots['8'].steps[0].values['Channel_Input/analog_gain'].a[0],
+		31,
+		'and saved',
+	)
+	// ...and put the fader back on the console, leaving the compressor as the engineer set it
+	sim.received.length = 0
+	await run('scopes', { scopes: [] }) // putting a value back does not depend on the scope keys
+	assert.equal((await http('POST', '/api/slot/revert', { id: '8', step: 0, suffixes: ['fader'] })).data.count, 1)
+	await until(() => sim.get('/Input_Channels/9/fader') === was.fader, 'fader back')
+	assert.deepEqual(
+		sim.received.map((m) => m.path),
+		['/Input_Channels/9/fader'],
+	)
+	assert.equal(sim.get('/Input_Channels/9/Dynamics/comp_thresh_1'), -33)
+	await until(async () => changed(await compare()).length === 1, 'only the compressor still differs').catch(() => {})
+	assert.deepEqual(changed(await compare()), ['Dynamics/comp_thresh_1'])
+
+	// Everything that still differs, in one go, each way
+	await http('POST', '/api/slot/revert', { id: '8', step: 0, suffixes: changed(await compare()) })
+	await until(() => sim.get('/Input_Channels/9/Dynamics/comp_thresh_1') === was.thresh, 'compressor back')
+	sim.surface('/Input_Channels/9/fader', 'f', [-5])
+	sim.surface('/Input_Channels/9/Channel_Delay/delay', 'f', [0.125])
+	await until(() => mod.engine.current.get('/Input_Channels/9/Channel_Delay/delay')?.a[0] === 0.125, 'heard')
+	const all = changed(await compare())
+	assert.deepEqual(all.sort(), ['Channel_Delay/delay', 'fader'])
+	assert.equal((await http('POST', '/api/slot/adopt', { id: '8', step: 0, suffixes: all })).data.count, 2)
+	assert.deepEqual(changed(await compare()), [])
+
+	// "Read again" asks the console afresh; odd requests are refused
+	const before = sim.queryCount
+	await compare({ refresh: true })
+	assert.ok(
+		sim.queryCount - before >= Object.keys(step().values).length,
+		'every value asked for (this console drops some, which are asked again)',
+	)
+	assert.equal((await http('POST', '/api/slot/compare', { id: '31' })).status, 400)
+	assert.equal((await http('POST', '/api/slot/revert', { id: '8', step: 4, suffixes: ['fader'] })).status, 400)
+	assert.equal((await http('POST', '/api/slot/adopt', { id: '8', step: 0, suffixes: ['nonsense'] })).data.count, 0)
+	await run('scopes', { scopes: ['eq'] })
+})
+
 await test('web page and API: browse, edit a value, rename, send, names, import', async () => {
 	const page = await http('GET', '/')
 	assert.equal(page.status, 200)

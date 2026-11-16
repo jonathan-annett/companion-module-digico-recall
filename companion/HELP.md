@@ -142,6 +142,10 @@ Or open `http://<companion address>:<port>/instance/<this connection's label>/`
   and edit every value, remove or reorder steps, point a step at a different channel,
   choose whether a step follows the scope keys or is always sent in full, relabel the
   button, copy to another slot, or send it to the console.
+  While a slot is open it is compared with the console. Anything changed on the console
+  since the capture is marked and listed first, with the console's value beside it. ↺ puts
+  the captured value back on the console; 💾 updates the capture with the console's value.
+  The same two buttons appear on each group and, for the whole slot, at the top.
 - **Names**: read all names from the console, edit them in a grid, send back only what
   changed. Load names from a slot, or save the grid to one.
 - **Log**: the audit trail, live. See Log above.

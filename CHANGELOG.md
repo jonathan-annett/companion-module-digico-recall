@@ -9,11 +9,26 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.7] - unreleased
+## [0.2.8] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.6 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.7 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.7:
+
+- **A slot shows what has changed on the console since it was captured.** Open a slot on
+  the web page and it is compared with the console, live. Values that differ are marked
+  and listed first, with the console's present value beside the captured one, and two
+  buttons: ↺ puts the captured value back on the console, 💾 takes the console's value
+  into the capture. The same pair is on each group (EQ, COMP, LEVEL and so on) and, for
+  everything at once, at the top: "Undo changes made on the console" and "Update capture
+  from the console". So a new gain can be kept while compressor and fader changes are
+  ignored or undone.
+- Watching costs no console traffic: a channel is read once when its slot is opened, and
+  after that the comparison uses the changes the console announces by itself. ⟳ reads it
+  all again.
+- Putting a value back sends just that value, whatever scope keys are lit.
 
 Since test build 0.2.6:
 

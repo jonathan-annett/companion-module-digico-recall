@@ -135,6 +135,7 @@ export class Engine {
 		this.names = {}
 		this.consoleName = ''
 		this.absent = {} // section -> Map(suffix -> captures in a row it went unanswered)
+		this.current = new Map() // address -> { t, a }: the latest value the console has reported
 		this.online = false
 		this.lastReply = 0
 		this.sentAt = new Map()
@@ -235,9 +236,12 @@ export class Engine {
 
 	onMessage(m) {
 		this.lastReply = Date.now()
+		// What the console last said each setting is, for comparing a capture with the console now
+		if (m.args.length && !/meter/i.test(m.path)) this.current.set(m.path, { t: m.types, a: m.args })
 		if (!this.online) {
 			this.online = true
 			this.absent = {} // it may be a different console now
+			this.current.clear()
 			this.audit.event(`Console connected${this.consoleName ? `: ${this.consoleName}` : ''}`)
 			this.hooks.onStatus?.(true, 'Connected')
 			this.changed()
@@ -668,6 +672,74 @@ export class Engine {
 		}
 		if (this.sentAt.size > 5000) {
 			for (const [path, at] of this.sentAt) if (now - at > ECHO_WINDOW_MS) this.sentAt.delete(path)
+		}
+		return n
+	}
+
+	// ---- comparing a slot with the console ---------------------------------------------
+
+	/**
+	 * What the console has now for every value in a slot. The first look at a channel asks
+	 * the console; after that the answer comes from what the console has reported since,
+	 * because it announces every change, so watching a slot costs no traffic.
+	 * @returns {Promise<{ now: Record<string, {t: string, a: any[]}> }[]>}  one entry per step
+	 */
+	async compareSlot(id, refresh = false) {
+		const slot = this.lib.slots[String(id)]
+		if (!slot) return []
+		const pathOf = (step, suffix) => `/${step.section}/${step.index}/${suffix}`
+		const ask = []
+		for (const step of slot.steps) {
+			for (const suffix of Object.keys(step.values)) {
+				const path = pathOf(step, suffix)
+				if (refresh || !this.current.has(path)) ask.push(path)
+			}
+		}
+		if (ask.length) {
+			const got = await this.queryMany([...new Set(ask)])
+			for (const [path, v] of got) this.current.set(path, v)
+		}
+		return slot.steps.map((step) => {
+			const now = {}
+			for (const suffix of Object.keys(step.values)) {
+				const v = this.current.get(pathOf(step, suffix))
+				if (v) now[suffix] = v
+			}
+			return { now }
+		})
+	}
+
+	/** Put chosen values of one step back on the console as captured, whatever scopes are lit. */
+	revertValues(id, stepIndex, suffixes) {
+		const step = this.lib.slots[String(id)]?.steps[stepIndex]
+		if (!step) return 0
+		const values = {}
+		for (const suffix of suffixes) if (step.values[suffix]) values[suffix] = step.values[suffix]
+		const n = this.sendValues(step.section, step.index, values, null)
+		if (n)
+			this.audit.event(
+				`Put back ${n} captured value(s) of slot ${id} on ${describe(step.section, step.index, step.name)}`,
+			)
+		return n
+	}
+
+	/** Take the console's present values for chosen settings of one step into the capture. */
+	adoptValues(id, stepIndex, suffixes) {
+		const step = this.lib.slots[String(id)]?.steps[stepIndex]
+		if (!step) return 0
+		let n = 0
+		for (const suffix of suffixes) {
+			const v = this.current.get(`/${step.section}/${step.index}/${suffix}`)
+			if (!v || !step.values[suffix]) continue
+			step.values[suffix] = { t: v.t, a: [...v.a] }
+			n++
+		}
+		if (n) {
+			this.audit.event(
+				`Updated ${n} value(s) of slot ${id} from the console (${describe(step.section, step.index, step.name)})`,
+			)
+			this.persist()
+			this.changed()
 		}
 		return n
 	}

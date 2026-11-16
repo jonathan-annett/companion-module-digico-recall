@@ -336,3 +336,21 @@ console and network.
 - The maintainer's suggestion named the proxy. The keys belong to the recall module,
   which holds the captures; they work whether it talks to the console directly or
   through the proxy.
+
+### 2026-11-17: a slot compared with the console, 0.2.8
+
+- Asked for by the maintainer: when looking at a captured channel, see what has changed
+  since, undo the console's changes, take them into the capture, or pick value by value.
+- The console announces every change to an iPad-type device, so the engine keeps the
+  latest value it has heard for every address (`current`). A slot's channels are queried
+  once when it is opened; from then on the comparison reads `current` and sends nothing.
+  The page asks the module once a second, which is a local call.
+- Three sizes of the same two actions: one value, one scope group, the whole slot. Both
+  actions are explicit and ignore the scope keys: the user has pointed at the values.
+- Numbers within 0.005 count as equal, since the console reports rounded floats.
+- "Changed" is relative to the stored capture, so taking a value in makes it match, and
+  a recall makes everything match by way of the console's echo.
+- The comparison is with the channel the capture came from. Ganged partners moving in
+  step with a put-back are the console's doing, as with a recall.
+- Limit: a change the console makes without announcing it (if there is such a thing,
+  a snapshot firing perhaps) would be missed until ⟳ is pressed. To be watched for.
