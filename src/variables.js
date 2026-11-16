@@ -7,14 +7,13 @@ export function getVariableDefinitions(config) {
 		console: { name: 'Console name' },
 		touched: { name: 'Last touched channel' },
 		held: { name: 'Capture waiting to be stored' },
+		waiting: { name: 'What the next slot press will store: CAPTURE, SCRIPT, NAMES or nothing' },
 		scopes: { name: 'Active recall scopes' },
 		target: { name: 'Where recalls go: ORIGINAL, or the last touched channel' },
 		script_steps: { name: 'Steps in the script being recorded' },
 		names_count: { name: 'Names in the list being saved' },
 	}
 	for (const i of ids(config.slotCount)) defs[`slot_${i}`] = { name: `Slot ${i} contents` }
-	for (const i of ids(config.scriptCount)) defs[`script_${i}`] = { name: `Script ${i} contents` }
-	for (const i of ids(config.nameSetCount)) defs[`nameset_${i}`] = { name: `Name set ${i} contents` }
 	return defs
 }
 
@@ -26,6 +25,7 @@ export function getVariableValues(engine, config) {
 		console: engine.consoleName,
 		touched: status.touchedLabel,
 		held: status.held,
+		waiting: status.waiting.toUpperCase(),
 		scopes: SCOPES.filter((s) => engine.scopes.has(s.id))
 			.map((s) => s.label)
 			.join(' '),
@@ -35,7 +35,5 @@ export function getVariableValues(engine, config) {
 		names_count: status.namesRecording ? String(status.namesCount) : '',
 	}
 	for (const i of ids(config.slotCount)) values[`slot_${i}`] = engine.slotLabel(i)
-	for (const i of ids(config.scriptCount)) values[`script_${i}`] = engine.scriptLabel(i)
-	for (const i of ids(config.nameSetCount)) values[`nameset_${i}`] = engine.nameSetLabel(i)
 	return values
 }

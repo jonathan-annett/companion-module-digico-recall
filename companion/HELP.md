@@ -33,57 +33,58 @@ instead of the console.
 
 ## Buttons
 
-Everything is in the **Presets** tab, ready to drag onto pages.
+Everything is in the **Presets** tab, ready to drag onto pages. There is one idea behind
+all of it: **press a button to start building something, do it on the console, then press
+a slot to store it.** Press the slot again later to play it back.
+
+**Slots**
+
+A slot can hold any one of three things. Its colour says which:
+
+- **Green: a capture.** One or more whole channels. When you recall it, only the lit
+  recall scopes are sent.
+- **Purple: a script.** A sequence of recalls, played back exactly as recorded.
+- **Teal: names.** A list of channel names.
+
+Pressing a slot stores whatever is waiting (the CAPTURE, SCRIPT REC or SAVE NAMES button
+tells you when something is). Otherwise it recalls what the slot holds. The button shows
+its contents, and the text of the last one recalled turns yellow.
 
 **Capture**
 
 - **CAPTURE**: press it (red), then nudge a fader or hit solo or mute on each channel you
   want: one, or several. Each is read in full and the button counts them. Then press a
-  slot to store them all there. Press CAPTURE again to cancel.
-- **Hold CAPTURE for two seconds** to clear something. The button reads "PRESS SLOT TO
-  CLEAR"; the next slot, script or name set button you press is emptied, and everything
-  goes back to normal. It gives up after ten seconds, or straight away if you tap CAPTURE
-  or CANCEL. Nothing is sent to the console.
+  slot. Press CAPTURE again to cancel. Graphic EQs work the same way: touch a band.
+- **Hold CAPTURE for two seconds** to clear a slot. The button reads "PRESS SLOT TO
+  CLEAR"; the next slot you press is emptied. It gives up after ten seconds, or straight
+  away if you tap CAPTURE or CANCEL. Nothing is sent to the console.
 - **GRAB**: adds the last channel you touched to the capture, without arming first.
-- **TO**: where recalls land. ORIGINAL sends a capture back to the channel it came from.
-  TOUCHED (purple) sends it to whichever channel you touched last, and the button names
-  that channel ("TO In 5 Vox") so you can see where a recall will land, so a capture works like a
-  preset you can drop on any channel (inputs, groups, auxes and matrices share EQ and
-  dynamics addresses, so input to group works too). A capture holding several channels always
-  goes back to its own channels.
+- **TO**: where a capture of a single channel lands. ORIGINAL sends it back to the channel
+  it came from. Press it and it turns purple and names the last channel you touched ("TO
+  In 5 Vox"); recalls now land there, so one capture works like a preset you can drop on
+  any channel (input to group works too). Captures of several channels, scripts and names
+  always go to the channels they were made for.
+- **CANCEL**: stops whatever is being built.
 
 **Recall scope**
 
 - Toggle keys: EQ, COMP, GATE, LEVEL, AUX, GAIN, PAN, DELAY, NAME, OTHER. Only the lit
-  ones are sent when you recall. EQ includes the filters; LEVEL is fader and mute; GAIN is
-  analogue gain, trim, pad and polarity; OTHER is insert on/off plus anything learned.
+  ones are sent when you recall a capture (green slot). EQ includes the filters; LEVEL is
+  fader and mute; GAIN is analogue gain, trim, pad and polarity; OTHER is insert on/off
+  plus anything learned.
 
-**Slots**
+**Build**
 
-- A slot button stores when a capture is waiting, otherwise it recalls. A slot can hold one
-  channel or many (a whole drum kit, say); recalling sends the lit scopes to every channel
-  in it. Green means it
-  holds something, blue means it was the last one recalled. The button shows what it holds.
-- Graphic EQs are captured the same way: touch a band on the GEQ, press a slot. Recall
-  them with the EQ scope on.
-
-**Scripts**
-
-- **SCRIPT REC**: press, then press slots (changing scopes between presses if you like).
-  Each recall happens live and is added to the script. Press SCRIPT REC again, then press
-  a script button to store it. After that the script button replays the lot.
-- A script keeps its own copy of the values, so re-using the slots later doesn't change it.
-
-**Names**
-
-- **SAVE NAMES**: press it (red), then tap solo on each channel, group or aux whose name you
-  want to keep. Each one is added to a list and the button shows the count. Press a name
-  set button (**N1**, **N2**...) to store the list there. Press SAVE NAMES again to cancel.
-- **ALL NAMES**: while SAVE NAMES is red, adds every name on the console to the list in one
-  go.
-- **N1, N2...**: stores the list if one is waiting, otherwise writes that set's names back
-  to the console. Green means the set holds names. Only the names in the set are written;
-  everything else is left alone.
+- **SCRIPT REC**: press it, then press slots, changing the scope keys or the TO target
+  between presses if you like. Each recall happens live and is added to the script. Press
+  SCRIPT REC again, then press a slot to store the script there.
+  - A script can include anything: captures, names, and other scripts.
+  - A script holds its own copy of every value it sends. Changing or clearing the slots it
+    was built from doesn't change it, and a script can never loop back into itself.
+- **SAVE NAMES**: press it (red), then tap solo on each channel, group or aux whose name
+  you want. The button counts them. Press a slot to store the list. Recalling that slot
+  writes those names back and leaves every other name alone.
+- **ALL NAMES**: while SAVE NAMES is red, adds every name on the console to the list.
 
 ## Web page
 
@@ -91,11 +92,12 @@ The connection's settings page has an **Open the DiGiCo Recall web page** link a
 Or open `http://<companion address>:<port>/instance/<this connection's label>/`
 (for example `http://127.0.0.1:8000/instance/digico-recall/`).
 
-- **Captures**: see every value in a capture, edit or remove values, relabel the button,
-  point it at a different channel, copy it to another slot, or send it to the console.
-- **Scripts**: rename, reorder or remove steps, retarget a step, edit its values, run it.
+- **Slots**: every slot is a list of steps (a channel and the values to send to it). See
+  and edit every value, remove or reorder steps, point a step at a different channel,
+  choose whether a step follows the scope keys or is always sent in full, relabel the
+  button, copy to another slot, or send it to the console.
 - **Names**: read all names from the console, edit them in a grid, send back only what
-  changed. Load and save name sets.
+  changed. Load names from a slot, or save the grid to one.
 - **Library**: download everything as one file, or replace it from a file.
 
 ## What is not captured

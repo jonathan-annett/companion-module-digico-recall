@@ -1,4 +1,5 @@
-import { SCOPE_CHOICES, slotOption, scriptOption, setOption } from './actions.js'
+import { SCOPE_CHOICES, slotOption } from './actions.js'
+import { KINDS } from './engine.js'
 
 const rgb = (r, g, b) => (r << 16) | (g << 8) | b
 
@@ -10,22 +11,30 @@ export const COLORS = {
 	green: rgb(0, 140, 60),
 	blue: rgb(0, 90, 200),
 	purple: rgb(120, 50, 170),
+	teal: rgb(0, 120, 135),
+	yellow: rgb(255, 220, 0),
 	dim: rgb(40, 40, 40),
+}
+
+/** Slot colour by what it holds. */
+export const KIND_STYLES = {
+	capture: { bgcolor: COLORS.green, color: COLORS.white },
+	script: { bgcolor: COLORS.purple, color: COLORS.white },
+	names: { bgcolor: COLORS.teal, color: COLORS.white },
 }
 
 /** Button style used when each feedback is true. Presets reuse these. */
 export const FEEDBACK_STYLES = {
 	state: { bgcolor: COLORS.red, color: COLORS.white },
+	clearing: { bgcolor: COLORS.white, color: COLORS.red },
 	slot_used: { bgcolor: COLORS.green, color: COLORS.white },
-	slot_last: { bgcolor: COLORS.blue, color: COLORS.white },
+	slot_kind: KIND_STYLES.capture,
+	slot_last: { color: COLORS.yellow },
 	scope: { bgcolor: COLORS.amber, color: COLORS.black },
 	target_touched: { bgcolor: COLORS.purple, color: COLORS.white },
 	script_recording: { bgcolor: COLORS.red, color: COLORS.white },
 	script_waiting: { bgcolor: COLORS.amber, color: COLORS.black },
-	script_used: { bgcolor: COLORS.purple, color: COLORS.white },
-	nameset_used: { bgcolor: COLORS.green, color: COLORS.white },
 	names_recording: { bgcolor: COLORS.red, color: COLORS.white },
-	clearing: { bgcolor: COLORS.white, color: COLORS.red },
 }
 
 /** @param {{engine: import('./engine.js').Engine | null}} self */
@@ -63,7 +72,22 @@ export function getFeedbacks(self) {
 				return o.state === 'busy' ? e().mode !== 'idle' || e().clearMode : e().mode === o.state
 			},
 		),
-		slot_used: boolean('slot_used', 'Slot has a capture', [slotOption], (o) => e().lib.slots[String(o.slot)]),
+		slot_used: boolean('slot_used', 'Slot holds something', [slotOption], (o) => e().lib.slots[String(o.slot)]),
+		slot_kind: boolean(
+			'slot_kind',
+			'Slot holds a capture, a script or names',
+			[
+				slotOption,
+				{
+					type: 'dropdown',
+					id: 'kind',
+					label: 'Holds',
+					default: 'capture',
+					choices: KINDS.map((k) => ({ id: k.id, label: k.label })),
+				},
+			],
+			(o) => e().slotKind(o.slot) === o.kind,
+		),
 		slot_last: boolean(
 			'slot_last',
 			'Slot was the last one recalled',
@@ -83,14 +107,7 @@ export function getFeedbacks(self) {
 			() => e().targetMode === 'touched',
 		),
 		script_recording: boolean('script_recording', 'Script is recording', [], () => e().scriptRec),
-		script_waiting: boolean('script_waiting', 'Script recorded, waiting for a script button', [], () => e().scriptHeld),
-		script_used: boolean(
-			'script_used',
-			'Script slot has a script',
-			[scriptOption],
-			(o) => e().lib.scripts[String(o.script)],
-		),
+		script_waiting: boolean('script_waiting', 'Script recorded, waiting for a slot', [], () => e().scriptHeld),
 		names_recording: boolean('names_recording', 'Names are being saved (tap solos)', [], () => e().namesRec),
-		nameset_used: boolean('nameset_used', 'Name set has names', [setOption], (o) => e().lib.nameSets[String(o.set)]),
 	}
 }

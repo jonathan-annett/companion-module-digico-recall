@@ -87,8 +87,10 @@ await run('slot', { slot: 1 })
 await run('scopes', { scopes: ['eq', 'gain'] })
 await run('slot', { slot: 3 })
 await run('script_record')
-await run('script', { script: 1 })
-await run('names_capture', { set: 1, sections: ['Input_Channels', 'Group_Outputs', 'Aux_Outputs'] })
+await run('slot', { slot: slot++ })
+await run('names_record')
+await run('names_add_all', { sections: ['Input_Channels', 'Group_Outputs', 'Aux_Outputs'] })
+await run('slot', { slot: slot++ })
 
 const PREFIX = '/instance/recall'
 http

@@ -1,6 +1,6 @@
 import { SCOPES, SECTION_IDS } from './params.js'
 import { ids } from './config.js'
-import { COLORS, FEEDBACK_STYLES } from './feedbacks.js'
+import { COLORS, FEEDBACK_STYLES, KIND_STYLES } from './feedbacks.js'
 
 /**
  * Ready-made buttons for the Presets tab.
@@ -76,39 +76,18 @@ export function getPresets(label, config) {
 		)
 	}
 
-	for (const i of ids(config.slotCount)) {
-		button(
-			`slot_${i}`,
-			'Slots',
-			`Slot ${i}`,
-			`${i}\\n${v(`slot_${i}`)}`,
-			[act('slot', { slot: i })],
-			[fb('slot_used', { slot: i }), fb('slot_last', { slot: i })],
-		)
-	}
-
+	// Build: things that end with "press a slot to store"
 	button(
 		'script_record',
-		'Scripts',
+		'Build',
 		'Record script',
 		`SCRIPT\\nREC ${v('script_steps')}`,
 		[act('script_record')],
 		[fb('script_recording'), fb('script_waiting')],
 	)
-	for (const i of ids(config.scriptCount)) {
-		button(
-			`script_${i}`,
-			'Scripts',
-			`Script ${i}`,
-			`S${i}\\n${v(`script_${i}`)}`,
-			[act('script', { script: i })],
-			[fb('script_used', { script: i })],
-		)
-	}
-
 	button(
 		'names_record',
-		'Names',
+		'Build',
 		'Save names',
 		`SAVE\\nNAMES ${v('names_count')}`,
 		[act('names_record')],
@@ -116,20 +95,25 @@ export function getPresets(label, config) {
 	)
 	button(
 		'names_add_all',
-		'Names',
+		'Build',
 		'Add all names',
 		'ALL\\nNAMES',
 		[act('names_add_all', { sections: SECTION_IDS })],
 		[fb('names_recording', {}, amber)],
 	)
-	for (const i of ids(config.nameSetCount)) {
+
+	// One kind of slot. Its colour says what it holds; yellow text marks the last one recalled.
+	for (const i of ids(config.slotCount)) {
 		button(
-			`names_set_${i}`,
-			'Names',
-			`Name set ${i}`,
-			`N${i}\\n${v(`nameset_${i}`)}`,
-			[act('names_set', { set: i, sections: SECTION_IDS })],
-			[fb('nameset_used', { set: i })],
+			`slot_${i}`,
+			'Slots',
+			`Slot ${i}`,
+			`${i}\\n${v(`slot_${i}`)}`,
+			[act('slot', { slot: i })],
+			[
+				...Object.keys(KIND_STYLES).map((kind) => fb('slot_kind', { slot: i, kind }, KIND_STYLES[kind])),
+				fb('slot_last', { slot: i }),
+			],
 		)
 	}
 

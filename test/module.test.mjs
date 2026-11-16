@@ -79,8 +79,6 @@ const config = {
 	rate: 2000,
 	queryTimeout: 150,
 	slotCount: 8,
-	scriptCount: 4,
-	nameSetCount: 2,
 }
 
 const sim = new SimConsole({ listenPort: CONSOLE_PORT, replyPort: MODULE_PORT, dropEvery: 17 })
@@ -120,8 +118,8 @@ await test('arm, touch a channel, press a slot: whole channel is stored', async 
 	await run('slot', { slot: 1 })
 	assert.equal(mod.engine.mode, 'idle')
 	assert.equal(fb('slot_used', { slot: 1 }), true)
-	const snap = mod.engine.lib.slots['1'].channels[0]
-	assert.equal(mod.engine.lib.slots['1'].channels.length, 1)
+	const snap = mod.engine.lib.slots['1'].steps[0]
+	assert.equal(mod.engine.lib.slots['1'].steps.length, 1)
 	assert.equal(snap.section, 'Input_Channels')
 	assert.equal(snap.index, 5)
 	assert.equal(snap.name, 'In5')
@@ -147,7 +145,7 @@ await test('recall sends only the scopes that are switched on', async () => {
 	sim.surface('/Input_Channels/5/fader', 'f', [3])
 	sim.surface('/Input_Channels/5/Channel_Input/analog_gain', 'f', [55])
 	await sleep(50)
-	const snap = mod.engine.lib.slots['1'].channels[0]
+	const snap = mod.engine.lib.slots['1'].steps[0]
 	await run('scopes', { scopes: ['eq', 'gain'] })
 	sim.received.length = 0
 	await run('slot', { slot: 1 })
@@ -184,7 +182,7 @@ await test('recall to the last touched channel instead of the original', async (
 	await until(() => mod.vars.target === 'Grp 2 Grp2', 'TO button names the channel that will be written to')
 	const before5 = sim.get('/Input_Channels/5/Dynamics/comp_ratio_1')
 	await run('slot', { slot: 1 })
-	const want = mod.engine.lib.slots['1'].channels[0].values['Dynamics/comp_ratio_1'].a[0]
+	const want = mod.engine.lib.slots['1'].steps[0].values['Dynamics/comp_ratio_1'].a[0]
 	await until(() => sim.get('/Group_Outputs/2/Dynamics/comp_ratio_1') === want, 'comp copied to group 2')
 	assert.equal(sim.get('/Input_Channels/5/Dynamics/comp_ratio_1'), before5)
 	await run('target', { mode: 'original' })
@@ -195,17 +193,18 @@ await test('graphic EQ capture and recall', async () => {
 	await run('capture', { section: 'Graphic_EQ', index: 2 })
 	assert.equal(mod.engine.mode, 'holding')
 	await run('slot', { slot: 2 })
-	assert.equal(Object.keys(mod.engine.lib.slots['2'].channels[0].values).length, 34)
-	const saved = mod.engine.lib.slots['2'].channels[0].values.geq_gain_17.a[0]
+	assert.equal(Object.keys(mod.engine.lib.slots['2'].steps[0].values).length, 34)
+	const saved = mod.engine.lib.slots['2'].steps[0].values.geq_gain_17.a[0]
 	sim.surface('/Graphic_EQ/2/geq_gain_17', 'f', [-11])
 	await run('scopes', { scopes: ['eq'] })
 	await run('slot', { slot: 2 })
 	await until(() => sim.get('/Graphic_EQ/2/geq_gain_17') === saved, 'GEQ band restored')
 })
 
-await test('record a script from several recalls and run it from one button', async () => {
+await test('record a script from several recalls, store it in a slot, run it from that slot', async () => {
 	await run('capture', { section: 'Input_Channels', index: 7 })
 	await run('slot', { slot: 3 })
+	assert.equal(fb('slot_kind', { slot: 3, kind: 'capture' }), true)
 	await run('script_record')
 	assert.equal(fb('script_recording'), true)
 	await run('scopes', { scopes: ['eq'] })
@@ -214,21 +213,30 @@ await test('record a script from several recalls and run it from one button', as
 	await run('slot', { slot: 3 })
 	await run('script_record')
 	assert.equal(fb('script_waiting'), true)
-	await run('script', { script: 1 })
-	assert.equal(fb('script_used', { script: 1 }), true)
-	const script = mod.engine.lib.scripts['1']
+	await until(() => mod.vars.waiting === 'SCRIPT', 'waiting variable')
+	await run('slot', { slot: 6 })
+	assert.equal(fb('slot_kind', { slot: 6, kind: 'script' }), true)
+	assert.equal(fb('slot_kind', { slot: 6, kind: 'capture' }), false)
+	const script = mod.engine.lib.slots['6']
+	assert.equal(script.kind, 'script')
 	assert.equal(script.steps.length, 2)
-	assert.deepEqual(script.steps[0].scopes, ['eq'])
-	assert.deepEqual(script.steps[1].scopes, ['comp', 'level'])
+	assert.ok(
+		script.steps.every((step) => step.fixed),
+		'script steps are sent in full',
+	)
+	const scopesOf = (step) => [...new Set(Object.keys(step.values).map((suffix) => suffix.split('/')[0]))].sort()
+	assert.deepEqual(scopesOf(script.steps[0]), ['EQ', 'Filters'])
+	assert.deepEqual(scopesOf(script.steps[1]), ['Dynamics', 'fader', 'mute'])
 
-	// Clearing the source slots must not break the script
+	// Clearing the source slots, or changing the scope toggles, must not change the script
 	await run('clear_slot', { slot: 1 })
 	await run('clear_slot', { slot: 3 })
+	await run('scopes', { scopes: ['pan'] })
 	sim.surface('/Input_Channels/5/EQ/eq_freq_3', 'f', [1234])
 	sim.surface('/Input_Channels/7/fader', 'f', [-99])
 	sim.surface('/Input_Channels/7/EQ/eq_freq_3', 'f', [4321])
 	await sleep(50)
-	await run('script', { script: 1 })
+	await run('slot', { slot: 6 })
 	await until(
 		() => sim.get('/Input_Channels/5/EQ/eq_freq_3') === script.steps[0].values['EQ/eq_freq_3'].a[0],
 		'step 1 EQ',
@@ -237,20 +245,28 @@ await test('record a script from several recalls and run it from one button', as
 	assert.equal(sim.get('/Input_Channels/7/EQ/eq_freq_3'), 4321, 'input 7 EQ was not in the script')
 })
 
-await test('capture all names to a set, then restore them', async () => {
-	await run('names_capture', {
-		set: 1,
-		sections: ['Input_Channels', 'Group_Outputs', 'Aux_Outputs', 'Matrix_Outputs', 'Graphic_EQ', 'Control_Groups'],
+await test('save names with the buttons, store them in a slot, restore from that slot', async () => {
+	await run('names_record')
+	assert.equal(fb('names_recording'), true)
+	await run('names_add_all', { sections: ['Input_Channels', 'Group_Outputs'] })
+	await until(() => mod.vars.names_count === '16', 'count on the button')
+	await run('slot', { slot: 7 })
+	assert.equal(fb('names_recording'), false)
+	assert.equal(fb('slot_kind', { slot: 7, kind: 'names' }), true)
+	const slot = mod.engine.lib.slots['7']
+	assert.equal(slot.steps.length, 12 + 4)
+	assert.deepEqual(slot.steps.find((step) => step.section === 'Group_Outputs' && step.index === 3).values, {
+		'Buss_Trim/name': { t: 's', a: ['Grp3'] },
 	})
-	const set = mod.engine.lib.nameSets['1']
-	assert.equal(Object.keys(set.names.Input_Channels).length, 12)
-	assert.equal(set.names.Group_Outputs['3'], 'Grp3')
+	await until(() => mod.vars.slot_7 === '16 names', 'slot label')
 	sim.surface('/Input_Channels/4/Channel_Input/name', 's', ['Wrong'])
 	sim.surface('/Group_Outputs/3/Buss_Trim/name', 's', ['Wrong'])
-	await run('names_restore', { set: 1, sections: ['Input_Channels'] })
+	sim.surface('/Aux_Outputs/1/Buss_Trim/name', 's', ['Left alone'])
+	await run('scopes', { scopes: ['eq'] }) // names in a names slot don't depend on the NAME toggle
+	await run('slot', { slot: 7 })
 	await until(() => sim.get('/Input_Channels/4/Channel_Input/name') === 'In4', 'input name restored')
-	await sleep(100)
-	assert.equal(sim.get('/Group_Outputs/3/Buss_Trim/name'), 'Wrong', 'groups were not selected')
+	await until(() => sim.get('/Group_Outputs/3/Buss_Trim/name') === 'Grp3', 'group name restored')
+	assert.equal(sim.get('/Aux_Outputs/1/Buss_Trim/name'), 'Left alone', 'auxes were not in the list')
 })
 
 await test('NAME scope carries a channel name with a preset', async () => {
@@ -271,15 +287,19 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 	assert.equal(status.consoleName, 'SimQuantum')
 	assert.equal(status.counts.Input_Channels, 12)
 	assert.ok(status.scopeDefs.length >= 9 && status.sections.Input_Channels)
+	assert.deepEqual(
+		status.kinds.map((k) => k.id),
+		['capture', 'script', 'names'],
+	)
 	assert.equal(status.setup.send, MODULE_PORT)
 	assert.equal(status.setup.rcv, CONSOLE_PORT)
 	assert.equal(status.setup.type, 'DiGiCo Pad')
 
 	const lib = (await http('GET', '/api/lib')).data
 	const snap = lib.slots['4']
-	assert.equal(snap.channels.length, 1)
+	assert.equal(snap.steps.length, 1)
 	snap.label = 'Lead Vox'
-	snap.channels[0].values['EQ/eq_gain_1'].a[0] = -4.5
+	snap.steps[0].values['EQ/eq_gain_1'].a[0] = -4.5
 	assert.equal((await http('POST', '/api/slot', { id: '4', value: snap })).status, 200)
 	assert.equal(mod.engine.lib.slots['4'].label, 'Lead Vox')
 	await until(() => mod.vars.slot_4 === 'Lead Vox', 'label reaches the button')
@@ -293,19 +313,31 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 	await http('POST', '/api/names/apply', { names: { Aux_Outputs: { 2: 'IEM Jon' } } })
 	await until(() => sim.get('/Aux_Outputs/2/Buss_Trim/name') === 'IEM Jon', 'edited name reaches the console')
 
-	const script = lib.scripts['1']
-	script.name = 'Song 2'
+	// A script slot: relabel and reorder its steps
+	const script = lib.slots['6']
+	script.label = 'Song 2'
 	script.steps.reverse()
-	await http('POST', '/api/script', { id: '1', value: script })
-	assert.equal(mod.engine.lib.scripts['1'].steps[0].index, 7)
-	await until(() => mod.vars.script_1 === 'Song 2', 'script label variable')
+	await http('POST', '/api/slot', { id: '6', value: script })
+	assert.equal(mod.engine.lib.slots['6'].steps[0].index, 7)
+	assert.equal(mod.engine.lib.slots['6'].kind, 'script')
+	await until(() => mod.vars.slot_6 === 'Song 2', 'script label reaches the button')
+
+	// Names edited on the page can be stored as a names slot
+	await http('POST', '/api/names/slot', {
+		id: '8',
+		label: 'Monitors',
+		names: { Aux_Outputs: { 1: 'Wedge 1', 2: 'IEM Jon' } },
+	})
+	assert.equal(mod.engine.lib.slots['8'].kind, 'names')
+	assert.equal(mod.engine.lib.slots['8'].steps.length, 2)
+	assert.equal((await http('POST', '/api/names/slot', { id: '8', names: {} })).status, 400)
 
 	// Bad input is refused or cleaned rather than stored
 	assert.equal((await http('POST', '/api/slot', { id: '5', value: { section: 'Nope', index: 1 } })).status, 400)
 	assert.equal((await http('POST', '/api/slot', { id: 'x', value: snap })).status, 400)
-	snap.channels[0].values['EQ/eq_gain_2'] = { t: 'f', a: ['not a number'] }
+	snap.steps[0].values['EQ/eq_gain_2'] = { t: 'f', a: ['not a number'] }
 	await http('POST', '/api/slot', { id: '5', value: snap })
-	assert.equal(mod.engine.lib.slots['5'].channels[0].values['EQ/eq_gain_2'], undefined)
+	assert.equal(mod.engine.lib.slots['5'].steps[0].values['EQ/eq_gain_2'], undefined)
 
 	await http('POST', '/api/slot', { id: '5', value: null })
 	assert.equal(mod.engine.lib.slots['5'], undefined)
@@ -335,7 +367,8 @@ await test('library survives a restart and a config edit', async () => {
 	mod = new Instance({})
 	await mod.init(saved)
 	assert.equal(mod.engine.lib.slots['4'].label, 'Lead Vox')
-	assert.equal(mod.engine.lib.scripts['1'].name, 'Song 2')
+	assert.equal(mod.engine.lib.slots['6'].label, 'Song 2')
+	assert.equal(mod.engine.lib.slots['7'].kind, 'names')
 	// Companion's config form sends the fields it knows about, without the library
 	const { library, ...formOnly } = saved
 	await mod.configUpdated({ ...formOnly, slotCount: 16 })

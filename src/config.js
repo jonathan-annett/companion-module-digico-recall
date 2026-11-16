@@ -7,15 +7,13 @@ export const DEFAULTS = {
 	rate: 500,
 	queryTimeout: 400,
 	slotCount: 32,
-	scriptCount: 8,
-	nameSetCount: 4,
 	learn: false,
 	ipadEnabled: false,
 	ipadHost: '192.168.1.20',
 	ipadSendPort: 9000,
 	ipadRecvPort: 9001,
 	libraryFile: '',
-	// Not shown in the settings form: the stored captures, scripts and name sets, as JSON.
+	// Not shown in the settings form: the stored slots, as JSON.
 	library: '',
 }
 
@@ -71,7 +69,7 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 			type: 'static-text',
 			id: 'webPage',
 			width: 12,
-			label: 'Web page: setup help, captures, scripts and names',
+			label: 'Web page: setup help, slot editor and names',
 			value:
 				`<a href="${path}" target="_blank" rel="noopener"><b>Open the DiGiCo Recall web page</b></a>. ` +
 				`It lives at this Companion's own address followed by <b>${path}</b> ` +
@@ -114,24 +112,14 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 			max: 5000,
 			default: DEFAULTS.queryTimeout,
 		},
-		{ type: 'number', id: 'slotCount', label: 'Preset slots', width: 4, min: 1, max: 200, default: DEFAULTS.slotCount },
 		{
 			type: 'number',
-			id: 'scriptCount',
-			label: 'Script slots',
-			width: 4,
+			id: 'slotCount',
+			label: 'Slots (each can hold a capture, a script or names)',
+			width: 6,
 			min: 1,
-			max: 100,
-			default: DEFAULTS.scriptCount,
-		},
-		{
-			type: 'number',
-			id: 'nameSetCount',
-			label: 'Name sets',
-			width: 4,
-			min: 1,
-			max: 50,
-			default: DEFAULTS.nameSetCount,
+			max: 200,
+			default: DEFAULTS.slotCount,
 		},
 		{
 			type: 'checkbox',
@@ -167,7 +155,7 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 	]
 }
 
-/** 1..count as an array, for slot, script and name-set numbering. */
+/** 1..count as an array, for slot numbering. */
 export function ids(count) {
 	return Array.from({ length: Math.max(1, Number(count) || 1) }, (_, i) => i + 1)
 }

@@ -4,8 +4,6 @@ export const SECTION_CHOICES = SECTION_IDS.map((id) => ({ id, label: SECTIONS[id
 export const SCOPE_CHOICES = SCOPES.map((s) => ({ id: s.id, label: s.label }))
 
 export const slotOption = { type: 'number', id: 'slot', label: 'Slot', default: 1, min: 1, max: 999 }
-export const scriptOption = { type: 'number', id: 'script', label: 'Script', default: 1, min: 1, max: 999 }
-export const setOption = { type: 'number', id: 'set', label: 'Name set', default: 1, min: 1, max: 999 }
 
 const sectionsOption = {
 	type: 'multidropdown',
@@ -49,7 +47,9 @@ export function getActions(self) {
 			},
 		},
 		slot: {
-			name: 'Slot: store (if a capture is waiting) or recall',
+			name: 'Slot: store whatever is waiting, otherwise recall',
+			description:
+				'Stores a waiting capture, recorded script or list of names. Otherwise recalls what the slot holds. In clear mode, empties it.',
 			options: [slotOption],
 			callback: async (action) => {
 				e()?.pressSlot(Number(action.options.slot))
@@ -102,26 +102,15 @@ export function getActions(self) {
 		},
 		script_record: {
 			name: 'Script: start / finish recording',
-			description: 'Start, press the slots you want (with the scopes you want), finish, then press a script button.',
+			description:
+				'Start, press the slots you want (with the scopes you want; other scripts and names are fine), finish, then press a slot to store it.',
 			options: [],
 			callback: async () => e()?.toggleScriptRecord(),
-		},
-		script: {
-			name: 'Script: store (if a recording is waiting) or run',
-			options: [scriptOption],
-			callback: async (action) => {
-				e()?.pressScript(Number(action.options.script))
-			},
-		},
-		clear_script: {
-			name: 'Script: clear',
-			options: [scriptOption],
-			callback: async (action) => e()?.clearScript(Number(action.options.script)),
 		},
 		names_record: {
 			name: 'Names: start saving names (tap solo on each channel)',
 			description:
-				'Press, then tap solo (or move anything) on each channel whose name you want. Then press a name set button to store the list. Press again to cancel.',
+				'Press, then tap solo (or move anything) on each channel whose name you want. Then press a slot to store the list. Press again to cancel.',
 			options: [],
 			callback: async () => e()?.toggleNamesRecord(),
 		},
@@ -133,29 +122,8 @@ export function getActions(self) {
 				await e()?.addAllNamesToList(list(action.options.sections))
 			},
 		},
-		names_set: {
-			name: 'Names: store (if a list is waiting) or restore a name set',
-			options: [setOption, sectionsOption],
-			callback: async (action) => {
-				e()?.pressNameSet(Number(action.options.set), list(action.options.sections))
-			},
-		},
-		names_capture: {
-			name: 'Names: capture every name straight to a name set',
-			options: [setOption, sectionsOption],
-			callback: async (action) => {
-				await e()?.captureNameSet(Number(action.options.set), list(action.options.sections))
-			},
-		},
-		names_restore: {
-			name: 'Names: restore a name set to the console (never stores)',
-			options: [setOption, sectionsOption],
-			callback: async (action) => {
-				e()?.restoreNameSet(Number(action.options.set), list(action.options.sections))
-			},
-		},
 		clear_mode: {
-			name: 'Clear: the next slot, script or name set pressed is emptied',
+			name: 'Clear: the next slot pressed is emptied',
 			description:
 				'Meant for a long press on the capture button. Switches itself off after 10 seconds, or when capture or cancel is pressed.',
 			options: [],

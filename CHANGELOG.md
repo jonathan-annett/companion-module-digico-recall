@@ -9,58 +9,52 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.1.1] - 2026-11-16
+## [0.2.0] - unreleased
 
-### Added
-
-- The settings page now shows the console's External Devices row (Type, Name, IP Address,
-  Send, Rcv, Enabled) filled in with the values to enter on the console, using this
-  computer's address on the console's network and the saved ports.
-- The web page has a Setup tab built on a picture of the console's External Control page.
-  Type the console's own address (its "Local ... IP" line) into the box on the picture and
-  the module finds which of this computer's addresses is on that network and shows the
-  device row to enter on the console, with a flashing "set this on the console" pointer.
-  A button saves the console address into the connection and reconnects. The page opens on
-  this tab when the console isn't answering.
-
-- The settings page has a link to the module's web page at the top.
-- Setup instructions (help, settings page and Setup tab) now include loading the iPad
-  command set with the console's "load" button, which the console needs before it will
-  respond.
+Reworked after the first sessions with Companion and the Quantum 338 offline software.
+Buttons made with 0.1.0 for scripts, name sets and clearing need replacing with the new
+presets; stored libraries are converted automatically.
 
 ### Changed
 
-- A capture can now hold several channels. Press CAPTURE, touch as many channels as you
-  like, then press a slot; recalling the slot sends the lit scopes to every channel in it.
-  A multi-channel capture always returns to its own channels, whatever the recall target
-  is set to. The web page lists and edits each channel in a capture. Libraries saved by
-  0.1.0 (one channel per slot) are read and converted automatically.
-- The TO button, when set to the last touched channel, now names that channel ("TO In 5
-  Vox") instead of reading "TOUCHED", so you can see where a recall will land.
-- Clearing: hold CAPTURE for two seconds and the next slot, script or name set button
-  pressed is emptied. Clear mode ends after one press, after ten seconds, or when CAPTURE
-  or CANCEL is tapped. The rows of "CLEAR n" preset buttons are gone; the clear actions
-  remain for buttons made with 0.1.0.
-- Saving names now works like capturing a channel. Press SAVE NAMES, tap solo on each
-  channel whose name you want, then press a name set button to store the list. The same
-  button restores it later, writing back only the names in the list. ALL NAMES adds every
-  name to the list. The preset buttons "NAMES SAVE n" and "NAMES n" are replaced by
-  SAVE NAMES, ALL NAMES and N1, N2... The 0.1.0 actions "capture every name" and "restore
-  a name set" still exist, so buttons made with 0.1.0 keep working.
+- **One kind of slot.** A slot can hold a capture, a script or a list of names, and is
+  colour-coded by what it holds (green, purple, teal). The separate script buttons, name
+  set buttons and their settings are gone. Internally everything is a list of steps.
+- **Captures can hold several channels.** Press CAPTURE, touch as many channels as you
+  like, then press a slot. Recalling sends the lit scopes to every channel in it.
+- **Scripts can contain anything**, including other scripts and names. A script copies the
+  values it sends at the moment it is recorded, so it cannot refer back to itself.
+- **Names are saved by tapping.** Press SAVE NAMES, tap solo on each channel, press a slot.
+  ALL NAMES adds every name. Recalling writes back only the names in the list.
+- **Clearing.** Hold CAPTURE for two seconds, then press the slot to clear. Ends after one
+  press, after ten seconds, or on CAPTURE or CANCEL. The rows of CLEAR buttons are gone.
+- **The TO button names its target.** Set to the last touched channel, it reads "TO In 5
+  Vox" so you can see where a recall will land. It only redirects a capture of a single
+  channel.
+- The last slot recalled is marked by yellow text, since colour now shows what a slot holds.
+- Removed actions: script store/run, script clear, name set capture and restore.
+  Removed settings: script slots, name sets.
+
+### Added
+
+- Setup help. The web page has a Setup tab built on a picture of the console's External
+  Control page: type the console's own address into the box and it shows the device row to
+  enter on the console, using this computer's address on that network, and saves the
+  console address. The settings page shows the same row for the saved settings.
+- Setup instructions now include loading the iPad command set with the console's "load"
+  button, which the console needs before it will respond.
+- A link to the web page at the top of the settings page.
+- The web page's slot editor: reorder and remove steps, retarget a step, and choose
+  whether it follows the scope keys or is sent in full.
 
 ### Fixed
 
-- The GRAB and TO buttons now show a touched channel's name even if it has never been
-  captured; the name is looked up when the channel is first touched.
-- A query still waiting when the connection was stopped or reconfigured could raise an
-  error. Queued queries are now dropped on stop.
-- Recall scope preset buttons wrapped their labels (COM/P, LEVE/L, DELA/Y, NAM/E, OTHE/R).
-  The text size is now 14 so each label stays on one line.
 - The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."
-  instead of by name. Companion builds that title from the manifest's manufacturer and
-  product list, which had been filled with console models. The product is now
-  "SD/Quantum Recall", so it lists as "DiGiCo: SD/Quantum Recall". The console models moved
-  to the search keywords.
+  instead of "DiGiCo: SD/Quantum Recall".
+- Recall scope preset buttons wrapped their labels (COM/P, LEVE/L).
+- The GRAB and TO buttons now show a touched channel's name even if it has never been
+  captured.
+- A query still waiting when the connection was stopped could raise an error.
 
 ## [0.1.0] - 2026-11-16
 
@@ -109,6 +103,5 @@ inside Companion against DiGiCo software or a console; see the test log.
   routing and insert assignment) is not available over this link.
 - Requires Companion 4.3 or newer (module API 2.0).
 
-[Unreleased]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.0...v0.1.1
+[Unreleased]: https://github.com/jonathan-annett/companion-module-digico-recall/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jonathan-annett/companion-module-digico-recall/releases/tag/v0.1.0

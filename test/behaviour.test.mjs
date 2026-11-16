@@ -14,7 +14,7 @@ import { encode, decode } from '../src/osc.js'
 import { captureSuffixes, scopeOf, parseAddress, SCOPE_IDS, SECTION_IDS } from '../src/params.js'
 import { localAddressFor, consoleSetup } from '../src/network.js'
 import { getConfigFields } from '../src/config.js'
-import { cleanSlot, cleanScript, cleanLibrary, cleanNames } from '../src/validate.js'
+import { cleanSlot, cleanLibrary, cleanNames, namesToSteps } from '../src/validate.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 async function until(check, what, ms = 4000) {
@@ -154,9 +154,9 @@ test('slot buttons do nothing harmful while a capture is in progress or the slot
 	assert.equal(engine.pressSlot(5), 'empty')
 	engine.toggleArm()
 	assert.equal(engine.pressSlot(5), 'busy')
-	assert.equal(engine.pressScript(1), 'busy')
+	assert.equal(engine.pressSlot(11), 'busy')
 	engine.cancel()
-	assert.equal(engine.pressScript(1), 'empty')
+	assert.equal(engine.pressSlot(11), 'empty')
 	await sleep(80)
 	assert.equal(sim.received.length, 0, 'nothing was sent to the console')
 })
@@ -175,7 +175,7 @@ test('multi-channel capture: arm, touch several channels, one slot stores and re
 	assert.equal(engine.mode, 'idle')
 	const slot = engine.lib.slots['1']
 	assert.deepEqual(
-		slot.channels.map((c) => `${c.section}/${c.index}`),
+		slot.steps.map((c) => `${c.section}/${c.index}`),
 		['Input_Channels/2', 'Input_Channels/6', 'Group_Outputs/3'],
 	)
 	assert.equal(engine.slotLabel(1), 'In2, In6, Grp3')
@@ -193,7 +193,7 @@ test('multi-channel capture: arm, touch several channels, one slot stores and re
 	await until(() => engine.lastTouched?.index === 9, 'touch 9')
 	assert.equal(engine.pressSlot(1), 'recalled')
 	for (const [i, path] of ['/Input_Channels/2', '/Input_Channels/6', '/Group_Outputs/3'].entries()) {
-		const want = slot.channels[i].values['EQ/eq_gain_1'].a[0]
+		const want = slot.steps[i].values['EQ/eq_gain_1'].a[0]
 		await until(() => sim.get(`${path}/EQ/eq_gain_1`) === want, `${path} EQ restored`)
 		assert.equal(sim.get(`${path}/Dynamics/comp_thresh_1`), -50, 'comp not in scope')
 	}
@@ -203,11 +203,11 @@ test('multi-channel capture: arm, touch several channels, one slot stores and re
 	engine.toggleScriptRecord()
 	engine.pressSlot(1)
 	engine.toggleScriptRecord()
-	engine.pressScript(1)
-	assert.equal(engine.lib.scripts['1'].steps.length, 3)
+	engine.pressSlot(11)
+	assert.equal(engine.lib.slots['11'].steps.length, 3)
 })
 
-test('clear mode: the next slot, script or name set pressed is emptied, and nothing is sent', async (t) => {
+test('clear mode: the next slot pressed is emptied, whatever it holds, and nothing is sent', async (t) => {
 	const { sim, engine, saved } = await rig(t, { clearTimeout: 150 })
 	for (const slot of [1, 2]) {
 		await engine.captureToHold('Input_Channels', slot)
@@ -216,10 +216,10 @@ test('clear mode: the next slot, script or name set pressed is emptied, and noth
 	engine.toggleScriptRecord()
 	engine.pressSlot(1)
 	engine.toggleScriptRecord()
-	engine.pressScript(1)
+	engine.pressSlot(11)
 	engine.toggleNamesRecord()
 	await engine.addAllNamesToList(['Aux_Outputs'])
-	engine.pressNameSet(1)
+	engine.pressSlot(21)
 	await sleep(100)
 	sim.received.length = 0
 
@@ -232,10 +232,10 @@ test('clear mode: the next slot, script or name set pressed is emptied, and noth
 	assert.equal(saved().slots['1'], undefined, 'saved')
 
 	engine.setClearMode(true)
-	assert.equal(engine.pressScript(1), 'cleared')
+	assert.equal(engine.pressSlot(11), 'cleared')
 	engine.setClearMode(true)
-	assert.equal(engine.pressNameSet(1), 'cleared')
-	assert.deepEqual([engine.lib.scripts, engine.lib.nameSets], [{}, {}])
+	assert.equal(engine.pressSlot(21), 'cleared')
+	assert.deepEqual(Object.keys(engine.lib.slots), ['2'], 'the script and names slots are gone too')
 
 	// An empty slot just ends clear mode
 	engine.setClearMode(true)
@@ -322,20 +322,73 @@ test('script recorded with "last touched" target replays to the channels it was 
 		engine.pressSlot(1)
 	}
 	engine.toggleScriptRecord()
-	assert.equal(engine.pressScript(2), 'stored')
+	assert.equal(engine.pressSlot(12), 'stored')
 	assert.deepEqual(
-		engine.lib.scripts['2'].steps.map((s) => s.index),
+		engine.lib.slots['12'].steps.map((s) => s.index),
 		[6, 7],
 	)
 	sim.surface('/Input_Channels/6/EQ/eq_gain_1', 'f', [-17])
 	sim.surface('/Input_Channels/7/EQ/eq_gain_1', 'f', [-17])
 	sim.surface('/Input_Channels/9/mute', 'f', [0]) // touching something else must not redirect the script
 	await until(() => engine.lastTouched?.index === 9, 'touch 9')
-	engine.pressScript(2)
-	const want = engine.lib.slots['1'].channels[0].values['EQ/eq_gain_1'].a[0]
+	engine.pressSlot(12)
+	const want = engine.lib.slots['1'].steps[0].values['EQ/eq_gain_1'].a[0]
 	await until(() => sim.get('/Input_Channels/6/EQ/eq_gain_1') === want, 'input 6')
 	await until(() => sim.get('/Input_Channels/7/EQ/eq_gain_1') === want, 'input 7')
 	assert.notEqual(sim.get('/Input_Channels/9/EQ/eq_gain_1'), want)
+})
+
+test('scripts can contain scripts and names; contents are copied, so a script can never call itself', async (t) => {
+	const { sim, engine } = await rig(t)
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(1) // capture
+	engine.toggleNamesRecord()
+	sim.surface('/Group_Outputs/1/solo', 'f', [1])
+	await until(() => engine.namesCount() === 1, 'one name')
+	engine.pressSlot(2) // names
+
+	// Inner script: EQ of slot 1
+	engine.setScopes(['eq'])
+	engine.toggleScriptRecord()
+	engine.pressSlot(1)
+	engine.toggleScriptRecord()
+	engine.pressSlot(3)
+	const inner = engine.lib.slots['3'].steps.length
+
+	// Outer script: the inner script, then the names, then slot 1's fader
+	engine.toggleScriptRecord()
+	engine.pressSlot(3)
+	engine.pressSlot(2)
+	engine.setScopes(['level'])
+	engine.pressSlot(1)
+	engine.toggleScriptRecord()
+	engine.pressSlot(4)
+	const outer = engine.lib.slots['4']
+	assert.equal(outer.kind, 'script')
+	assert.equal(outer.steps.length, inner + 2)
+	assert.ok(outer.steps.every((step) => step.fixed))
+
+	// Record a script that includes slot 4, and store it over slot 4 itself
+	engine.toggleScriptRecord()
+	engine.pressSlot(4)
+	engine.pressSlot(4)
+	engine.toggleScriptRecord()
+	engine.pressSlot(4)
+	assert.equal(engine.lib.slots['4'].steps.length, (inner + 2) * 2, 'twice its old contents, by value')
+
+	// Running it sends a fixed, finite number of messages
+	await engine.transport.drained() // let the recalls made while recording finish going out
+	await sleep(100)
+	sim.received.length = 0
+	const expected = engine.lib.slots['4'].steps.reduce((n, step) => n + Object.keys(step.values).length, 0)
+	assert.equal(engine.pressSlot(4), 'recalled')
+	await until(() => sim.received.length === expected, 'all script values sent')
+	await sleep(100)
+	assert.equal(sim.received.length, expected, 'and nothing more')
+
+	// Emptying the slots it was built from changes nothing
+	for (const id of [1, 2, 3]) engine.clearSlot(id)
+	assert.equal(engine.lib.slots['4'].steps.length, (inner + 2) * 2)
 })
 
 test('an empty script recording is discarded rather than stored', async (t) => {
@@ -343,39 +396,45 @@ test('an empty script recording is discarded rather than stored', async (t) => {
 	engine.toggleScriptRecord()
 	engine.toggleScriptRecord()
 	assert.equal(engine.scriptHeld, null)
-	assert.equal(engine.pressScript(1), 'empty')
+	assert.equal(engine.pressSlot(11), 'empty')
 })
 
-test('save names: tap channels to build a list, store it on a name-set button, restore it later', async (t) => {
+test('save names: tap channels to build a list, store it in a slot, restore it from that slot', async (t) => {
 	const { sim, engine, saved } = await rig(t)
 	sim.values.set('/Input_Channels/3/Channel_Input/name', { t: 's', a: ['Snare'] })
 	sim.values.set('/Input_Channels/5/Channel_Input/name', { t: 's', a: ['Vox'] })
 	sim.values.set('/Group_Outputs/2/Buss_Trim/name', { t: 's', a: ['Drums'] })
 
-	assert.equal(engine.pressNameSet(1), 'empty', 'an empty set does nothing')
+	assert.equal(engine.pressSlot(21), 'empty', 'an empty slot does nothing')
 	engine.toggleNamesRecord()
 	assert.equal(engine.stateLabel(), 'TAP SOLOS')
-	assert.equal(engine.pressNameSet(1), 'busy', 'nothing to store yet')
+	assert.equal(engine.pressSlot(21), 'busy', 'nothing to store yet')
 	sim.surface('/Input_Channels/3/solo', 'f', [1])
 	sim.surface('/Input_Channels/5/solo', 'f', [1])
 	sim.surface('/Group_Outputs/2/solo', 'f', [1])
 	sim.surface('/Input_Channels/3/solo', 'f', [0]) // un-soloing the same channel adds nothing new
 	await until(() => engine.namesCount() === 3, 'three names collected')
-	assert.equal(engine.stateLabel(), '3 NAMES')
+	assert.equal(engine.stateLabel(), '3 NAMES: PRESS SLOT')
 
 	// Other buttons are inert while names are being collected
 	sim.received.length = 0
 	engine.toggleArm()
 	assert.equal(engine.mode, 'idle')
-	assert.equal(engine.pressSlot(1), 'busy')
+	assert.equal(engine.mode, 'idle', 'capture cannot be armed meanwhile')
 
-	assert.equal(engine.pressNameSet(1), 'stored')
+	assert.equal(engine.pressSlot(21), 'stored')
 	assert.equal(engine.namesRec, null)
-	assert.deepEqual(saved().nameSets['1'].names, {
-		Input_Channels: { 3: 'Snare', 5: 'Vox' },
-		Group_Outputs: { 2: 'Drums' },
-	})
-	assert.equal(engine.nameSetLabel(1), '3 names')
+	const slot = saved().slots['21']
+	assert.equal(slot.kind, 'names')
+	assert.deepEqual(
+		slot.steps.map((step) => [step.section, step.index, step.fixed, step.values]),
+		[
+			['Input_Channels', 3, true, { 'Channel_Input/name': { t: 's', a: ['Snare'] } }],
+			['Input_Channels', 5, true, { 'Channel_Input/name': { t: 's', a: ['Vox'] } }],
+			['Group_Outputs', 2, true, { 'Buss_Trim/name': { t: 's', a: ['Drums'] } }],
+		],
+	)
+	assert.equal(engine.slotLabel(21), '3 names')
 	await sleep(60)
 	assert.equal(sim.received.length, 0, 'collecting and storing wrote nothing to the console')
 
@@ -383,7 +442,8 @@ test('save names: tap channels to build a list, store it on a name-set button, r
 	sim.surface('/Input_Channels/3/Channel_Input/name', 's', ['x'])
 	sim.surface('/Group_Outputs/2/Buss_Trim/name', 's', ['y'])
 	sim.surface('/Input_Channels/4/Channel_Input/name', 's', ['Not saved'])
-	assert.equal(engine.pressNameSet(1), 'restored')
+	engine.setScopes([]) // saved names go back whatever the scope toggles say
+	assert.equal(engine.pressSlot(21), 'recalled')
 	await until(() => sim.get('/Input_Channels/3/Channel_Input/name') === 'Snare', 'input name back')
 	await until(() => sim.get('/Group_Outputs/2/Buss_Trim/name') === 'Drums', 'group name back')
 	assert.equal(sim.get('/Input_Channels/4/Channel_Input/name'), 'Not saved', 'channels not in the list are left alone')
@@ -396,8 +456,8 @@ test('save names: "all names" fills the list, and pressing save names again thro
 	assert.equal(await engine.addAllNamesToList(['Input_Channels', 'Aux_Outputs']), 12 + 4)
 	engine.toggleNamesRecord()
 	assert.equal(engine.namesRec, null)
-	assert.equal(engine.pressNameSet(2), 'empty')
-	assert.deepEqual(engine.lib.nameSets, {})
+	assert.equal(engine.pressSlot(22), 'empty')
+	assert.deepEqual(engine.lib.slots, {})
 
 	// Cancel also drops it, and it can't start in the middle of a capture
 	engine.toggleNamesRecord()
@@ -458,16 +518,59 @@ test('values go back with the same OSC type they were read with', async (t) => {
 	assert.deepEqual(types, { fader: 'f', mute: 'i', name: 's' })
 })
 
+test('libraries from 0.1.x are converted: captures become slots of steps, scripts and name sets move into free slots', () => {
+	const fader = { fader: { t: 'f', a: [0] } }
+	const lib = cleanLibrary({
+		version: 2,
+		slots: {
+			1: { section: 'Aux_Outputs', index: 2, name: 'IEM', label: 'Mon', values: fader }, // 0.1.0
+			3: { label: 'Kit', channels: [{ section: 'Input_Channels', index: 1, name: 'Kick', values: fader }] },
+		},
+		scripts: {
+			1: { name: 'Song 2', steps: [{ section: 'Input_Channels', index: 7, scopes: ['eq'], values: fader }] },
+			2: { name: '', steps: [{ section: 'Input_Channels', index: 8, values: fader }] },
+		},
+		nameSets: { 1: { name: 'Friday', names: { Input_Channels: { 1: 'Kick', 2: 'Snare' } } }, 2: { names: {} } },
+	})
+	assert.deepEqual(Object.keys(lib), ['version', 'slots', 'learned'])
+	assert.equal(lib.version, 3)
+	assert.deepEqual(lib.slots['1'], {
+		label: 'Mon',
+		when: lib.slots['1'].when,
+		kind: 'capture',
+		steps: [{ section: 'Aux_Outputs', index: 2, name: 'IEM', fixed: false, values: fader }],
+	})
+	assert.equal(lib.slots['3'].kind, 'capture')
+	assert.equal(lib.slots['3'].steps[0].fixed, false)
+	// Scripts and name sets land in the first free slots: 2, 4, 5
+	assert.deepEqual(
+		['2', '4', '5'].map((id) => [lib.slots[id].kind, lib.slots[id].label, lib.slots[id].steps.length]),
+		[
+			['script', 'Song 2', 1],
+			['script', 'Script 2', 1],
+			['names', 'Friday', 2],
+		],
+	)
+	assert.equal(lib.slots['2'].steps[0].fixed, true, 'an old script step is still sent in full')
+	assert.equal(Object.keys(lib.slots).length, 5, 'the empty name set is dropped')
+	// Converting again changes nothing
+	assert.deepEqual(cleanLibrary(JSON.parse(JSON.stringify(lib))), lib)
+})
+
 test('validation: bad entries from the web page or an imported file are dropped or repaired', () => {
 	assert.equal(cleanSlot({ section: 'Nope', index: 1, values: {} }), null)
 	assert.equal(cleanSlot({ section: 'Input_Channels', index: 0, values: {} }), null)
 	assert.equal(cleanSlot({ channels: [] }), null)
+	assert.equal(cleanSlot({ steps: [] }), null)
+	assert.equal(cleanSlot({ steps: 'nope' }), null)
 	const slot = cleanSlot({
 		label: 7,
-		channels: [
+		kind: 'nonsense',
+		steps: [
 			{
 				section: 'Input_Channels',
 				index: '3',
+				fixed: false,
 				values: {
 					fader: { t: 'f', a: ['-6.5'] },
 					'EQ/eq_gain_1': { t: 'f', a: [Infinity] },
@@ -481,33 +584,18 @@ test('validation: bad entries from the web page or an imported file are dropped 
 		],
 	})
 	assert.equal(slot.label, '7')
-	assert.equal(slot.channels.length, 1, 'the invalid channel is dropped')
-	assert.equal(slot.channels[0].index, 3)
-	assert.deepEqual(slot.channels[0].values, {
+	assert.equal(slot.kind, 'capture', 'an unknown kind is worked out from the steps')
+	assert.equal(slot.steps.length, 1, 'the invalid step is dropped')
+	assert.equal(slot.steps[0].index, 3)
+	assert.deepEqual(slot.steps[0].values, {
 		fader: { t: 'f', a: [-6.5] },
 		'Channel_Input/name': { t: 's', a: ['42'] },
 	})
-	// A slot saved by 0.1.0 (one channel, fields directly on the slot) is wrapped
-	const old = cleanSlot({
-		section: 'Aux_Outputs',
-		index: 2,
-		name: 'IEM',
-		label: 'Mon',
-		values: { fader: { t: 'f', a: [0] } },
-	})
-	assert.deepEqual(old.channels, [
-		{ section: 'Aux_Outputs', index: 2, name: 'IEM', values: { fader: { t: 'f', a: [0] } } },
-	])
-	assert.equal(old.label, 'Mon')
-	assert.equal(cleanScript({ steps: 'nope' }), null)
+	assert.equal(cleanSlot({ steps: namesToSteps({ Input_Channels: { 1: 'Kick' } }) }).kind, 'names')
 	assert.equal(
-		cleanScript({
-			steps: [
-				{ section: 'Nope', index: 1 },
-				{ section: 'Aux_Outputs', index: 2 },
-			],
-		}).steps.length,
-		1,
+		cleanSlot({ steps: [{ section: 'Input_Channels', index: 1, fixed: true, values: { fader: { t: 'f', a: [0] } } }] })
+			.kind,
+		'script',
 	)
 	assert.deepEqual(cleanNames({ Input_Channels: { 1: 'Kick', x: 'bad', 2: 7 }, Bogus: { 1: 'a' } }), {
 		Input_Channels: { 1: 'Kick' },
@@ -645,11 +733,11 @@ test('library file: written on every change and read back on start', async (t) =
 	await until(() => mod.engine.counts.Aux_Outputs !== undefined, 'console info')
 	await mod.actions.capture.callback({ options: { section: 'Aux_Outputs', index: 2 } })
 	await mod.actions.slot.callback({ options: { slot: 9 } })
-	assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).slots['9'].channels[0].section, 'Aux_Outputs')
+	assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).slots['9'].steps[0].section, 'Aux_Outputs')
 	await mod.destroy()
 	mod = new Instance({})
 	await mod.init(config) // note: no library in the config, only the file
-	assert.equal(mod.engine.lib.slots['9'].channels[0].index, 2)
+	assert.equal(mod.engine.lib.slots['9'].steps[0].index, 2)
 })
 
 test('iPad relay: datagrams pass both ways, and a value written from the iPad counts as a touch', async (t) => {

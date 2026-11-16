@@ -42,6 +42,9 @@ main { flex: 1; min-height: 0; display: flex; }
 .row.empty .num { color: var(--line); }
 .row .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .meta { color: var(--dim); font-size: 12px; white-space: nowrap; }
+.kind { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 3px; color: #fff; white-space: nowrap; vertical-align: middle; }
+.kind.capture { background: #008c3c; } .kind.script { background: #7832aa; } .kind.names { background: #007887; }
+.row.k-capture .num { color: #3fd07c; } .row.k-script .num { color: #c08af0; } .row.k-names .num { color: #39c6d6; }
 .row.empty .what { color: var(--dim); }
 .detail { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px 60px; }
 .detail h2 { margin: 0 0 4px; font-size: 18px; }
@@ -112,9 +115,9 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 (function () {
 	'use strict'
 	var base = location.pathname.replace(/\/?$/, '/')
-	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null, scripts: null }, draft: null, dirty: false,
-		names: { section: 'Input_Channels', live: {}, edit: {}, setId: '1' } }
-	var TABS = [['slots', 'Captures'], ['scripts', 'Scripts'], ['names', 'Names'], ['library', 'Library'], ['setup', 'Setup']]
+	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null }, draft: null, dirty: false,
+		names: { section: 'Input_Channels', live: {}, edit: {}, slotId: '' } }
+	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['library', 'Library'], ['setup', 'Setup']]
 
 	function h(tag, attrs) {
 		var el = document.createElement(tag)
@@ -183,7 +186,25 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		if (channels.length <= 3) return channels.map(function (c) { return c.name || where(c) }).join(', ')
 		return channels.length + ' channels'
 	}
-	function slotTitle(slot) { return slot.label || channelsTitle(slot.channels) }
+	function uniqueChannels(steps) {
+		var seen = {}
+		return steps.filter(function (st) {
+			var key = st.section + '/' + st.index
+			if (seen[key]) return false
+			seen[key] = true
+			return true
+		})
+	}
+	function slotTitle(slot) {
+		if (slot.label) return slot.label
+		if (slot.kind === 'names' && slot.steps.length > 1) return slot.steps.length + ' names'
+		return channelsTitle(uniqueChannels(slot.steps))
+	}
+	function kindLabel(kind) {
+		var k = (S.status.kinds || []).filter(function (x) { return x.id === kind })[0]
+		return k ? k.label : kind
+	}
+	function isNameSuffix(suffix) { return /(^|\/)name$/.test(suffix) }
 	function when(iso) {
 		var d = new Date(iso)
 		return isNaN(d) ? '' : d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -269,43 +290,56 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 	}
 	function remove(bucket, path) {
 		var id = S.sel[bucket]
-		if (!confirm('Delete ' + (bucket === 'slots' ? 'capture ' : 'script ') + id + '?')) return
+		if (!confirm('Delete slot ' + id + '?')) return
 		api(path, { id: id, value: null }).then(function () { S.draft = null; return reload(true) }).then(function () { toast('Deleted') }).catch(fail)
 	}
 
 	function slotValueCount(slot) {
-		return slot.channels.reduce(function (n, c) { return n + Object.keys(c.values).length }, 0)
+		return slot.steps.reduce(function (n, c) { return n + Object.keys(c.values).length }, 0)
 	}
 
+	// Every slot is a list of steps. A step either follows the scope toggles when recalled
+	// (a captured channel) or is sent in full (a script step, a saved name).
 	function viewSlots() {
 		var list = h('div', { class: 'list' }, ids('slots', S.status.slotCount).map(function (id) {
 			var slot = S.lib.slots[id]
-			return h('div', { class: 'row' + (slot ? '' : ' empty') + (S.sel.slots === id ? ' on' : ''), onclick: function () { select('slots', id) } },
+			return h('div', { class: 'row' + (slot ? ' k-' + slot.kind : ' empty') + (S.sel.slots === id ? ' on' : ''), onclick: function () { select('slots', id) } },
 				h('span', { class: 'num' }, id),
 				h('span', { class: 'what' }, slot ? slotTitle(slot) : 'empty'),
-				slot ? h('span', { class: 'meta' }, slot.channels.length > 1 ? slot.channels.length + ' ch' : slotValueCount(slot)) : null)
+				slot ? h('span', { class: 'kind ' + slot.kind }, kindLabel(slot.kind)) : null)
 		}))
 		var d = S.draft, id = S.sel.slots, detail
 		if (!id) {
-			detail = h('div', { class: 'empty-state' }, 'Pick a slot on the left. Captures made from the Stream Deck show up here within a few seconds.')
+			detail = h('div', { class: 'empty-state' }, 'Pick a slot on the left. Anything stored from the Stream Deck shows up here within a few seconds.')
 		} else if (!d) {
-			detail = h('div', { class: 'empty-state' }, 'Slot ' + id + ' is empty. Press CAPTURE on the Stream Deck, touch one or more channels, then press slot ' + id + '.')
+			detail = h('div', { class: 'empty-state' }, 'Slot ' + id + ' is empty. On the Stream Deck press CAPTURE, SCRIPT REC or SAVE NAMES, do the thing, then press slot ' + id + '.')
 		} else {
 			var dirty = function () { setDirty(true) }
 			var checks = {}
 			var present = {}
-			d.channels.forEach(function (c) { Object.keys(c.values).forEach(function (s) { present[scopeOf(s)] = true }) })
+			var follows = d.steps.filter(function (st) { return !st.fixed })
+			follows.forEach(function (st) { Object.keys(st.values).forEach(function (sfx) { present[scopeOf(sfx)] = true }) })
 			var copyTo = h('input', { class: 'n', type: 'number', min: 1, max: 999, placeholder: 'slot' })
-			var many = d.channels.length > 1
+			var many = d.steps.length > 1
+			var move = function (i, by) {
+				var j = i + by
+				if (j < 0 || j >= d.steps.length) return
+				var tmp = d.steps[i]; d.steps[i] = d.steps[j]; d.steps[j] = tmp
+				dirty(); render()
+			}
 			detail = [
-				h('h2', {}, 'Capture ' + id + ' · ' + slotTitle(d)),
-				h('p', { class: 'sub' }, d.channels.length + (many ? ' channels, ' : ' channel, ') + slotValueCount(d) + ' values' + (d.when ? ' · captured ' + when(d.when) : '')),
+				h('h2', {}, 'Slot ' + id + ' · ' + slotTitle(d), ' ', h('span', { class: 'kind ' + d.kind }, kindLabel(d.kind))),
+				h('p', { class: 'sub' }, d.steps.length + (many ? ' steps, ' : ' step, ') + slotValueCount(d) + ' values' + (d.when ? ' · stored ' + when(d.when) : '')),
 				h('div', { class: 'bar' },
-					h('label', { class: 'f' }, 'Button label', h('input', { value: d.label || '', placeholder: channelsTitle(d.channels),
-						oninput: function (e) { d.label = e.target.value; dirty() } }))),
+					h('label', { class: 'f' }, 'Button label', h('input', { value: d.label || '', placeholder: slotTitle({ kind: d.kind, steps: d.steps }),
+						oninput: function (e) { d.label = e.target.value; dirty() } })),
+					h('label', { class: 'f' }, 'Shown as',
+						h('select', { onchange: function (e) { d.kind = e.target.value; dirty(); render() } }, (S.status.kinds || []).map(function (k) {
+							return h('option', { value: k.id, selected: k.id === d.kind }, k.label)
+						})))),
 				h('div', { class: 'bar' },
 					h('button', { class: 'b', id: 'save', onclick: function () {
-						if (!d.channels.length) return fail(new Error('A capture needs at least one channel. Use Delete to remove it.'))
+						if (!d.steps.length) return fail(new Error('A slot needs at least one step. Use Delete to empty it.'))
 						save('slots', 'api/slot')
 					} }, 'Save changes'),
 					copyTo,
@@ -320,75 +354,27 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 					h('button', { class: 'b', onclick: function () {
 						if (S.dirty) return fail(new Error('Save your changes first'))
 						var on = Object.keys(checks).filter(function (k) { return checks[k].checked })
-						api('api/slot/recall', { id: id, scopes: on }).then(function (r) { toast('Sent ' + r.sent + ' values to ' + channelsTitle(d.channels)) }).catch(fail)
+						api('api/slot/recall', { id: id, scopes: on }).then(function (r) { toast('Sent ' + r.sent + ' values to the console') }).catch(fail)
 					} }, 'Send to console now'),
-					scopeList().filter(function (s) { return present[s.id] }).map(function (s) {
-						checks[s.id] = h('input', { type: 'checkbox', checked: (S.status.scopes_on || []).indexOf(s.id) >= 0 })
-						return h('label', {}, checks[s.id], ' ' + s.label)
-					})),
-				d.channels.map(function (channel, i) {
-					return h('details', { open: !many },
-						h('summary', {}, where(channel),
-							h('span', { class: 'count' }, Object.keys(channel.values).length + ' values'),
-							h('span', { class: 'grow' }),
-							many ? h('button', { class: 'x', title: 'Remove this channel from the capture', onclick: function (e) { e.preventDefault(); d.channels.splice(i, 1); dirty(); render() } }, '×') : null),
-						h('div', { class: 'bar', style: 'padding: 0 12px' }, targetFields(channel, dirty)),
-						h('div', { style: 'padding: 0 12px 4px' }, valueGroups(channel.values, dirty)))
-				}),
-				h('p', { class: 'note' }, 'Values are shown exactly as the console reports them: levels and gains in dB, frequencies in Hz, times in seconds, switches as 0 or 1.'),
-			]
-		}
-		return [list, h('div', { class: 'detail' }, detail)]
-	}
-
-	// ---- scripts --------------------------------------------------------------------
-
-	function viewScripts() {
-		var list = h('div', { class: 'list' }, ids('scripts', S.status.scriptCount).map(function (id) {
-			var sc = S.lib.scripts[id]
-			return h('div', { class: 'row' + (sc ? '' : ' empty') + (S.sel.scripts === id ? ' on' : ''), onclick: function () { select('scripts', id) } },
-				h('span', { class: 'num' }, id),
-				h('span', { class: 'what' }, sc ? (sc.name || sc.steps.map(where).join(', ')) : 'empty'),
-				sc ? h('span', { class: 'meta' }, sc.steps.length + ' step' + (sc.steps.length === 1 ? '' : 's')) : null)
-		}))
-		var d = S.draft, id = S.sel.scripts, detail
-		if (!id) {
-			detail = h('div', { class: 'empty-state' }, 'Pick a script on the left.')
-		} else if (!d) {
-			detail = h('div', { class: 'empty-state' }, 'Script ' + id + ' is empty. Press Record Script on the Stream Deck, press the slots you want with the scopes you want, press Record Script again, then press script ' + id + '.')
-		} else {
-			var dirty = function () { setDirty(true) }
-			var move = function (i, by) {
-				var j = i + by
-				if (j < 0 || j >= d.steps.length) return
-				var tmp = d.steps[i]; d.steps[i] = d.steps[j]; d.steps[j] = tmp
-				dirty(); render()
-			}
-			detail = [
-				h('h2', {}, 'Script ' + id + (d.name ? ' · ' + d.name : '')),
-				h('p', { class: 'sub' }, d.steps.length + ' steps, run top to bottom' + (d.when ? ' · recorded ' + when(d.when) : '')),
-				h('div', { class: 'bar' },
-					h('label', { class: 'f' }, 'Button label', h('input', { value: d.name || '', oninput: function (e) { d.name = e.target.value; dirty() } }))),
-				h('div', { class: 'bar' },
-					h('button', { class: 'b', id: 'save', onclick: function () { save('scripts', 'api/script') } }, 'Save changes'),
-					h('button', { class: 'b', onclick: function () {
-						if (S.dirty) return fail(new Error('Save your changes first'))
-						api('api/script/run', { id: id }).then(function (r) { toast('Sent ' + r.sent + ' values') }).catch(fail)
-					} }, 'Run now'),
-					h('button', { class: 'b danger', onclick: function () { remove('scripts', 'api/script') } }, 'Delete')),
+					follows.length ? scopeList().filter(function (sc) { return present[sc.id] }).map(function (sc) {
+						checks[sc.id] = h('input', { type: 'checkbox', checked: (S.status.scopes_on || []).indexOf(sc.id) >= 0 })
+						return h('label', {}, checks[sc.id], ' ' + sc.label)
+					}) : h('span', { class: 'note' }, 'Every step is sent in full.')),
 				d.steps.map(function (step, i) {
-					return h('details', {},
-						h('summary', {}, (i + 1) + '. ' + where(step),
-							(step.scopes || []).map(function (s) { return h('span', { class: 'chip on' }, s.toUpperCase()) }),
-							h('span', { class: 'count' }, Object.keys(step.values).length + ' values' + (step.from ? ' from slot ' + step.from : '')),
+					var followBox = h('input', { type: 'checkbox', checked: !step.fixed, onchange: function (e) { step.fixed = !e.target.checked; dirty(); render() } })
+					return h('details', { open: !many },
+						h('summary', {}, (many ? (i + 1) + '. ' : '') + where(step),
+							h('span', { class: 'chip' + (step.fixed ? '' : ' on') }, step.fixed ? 'SENT IN FULL' : 'FOLLOWS SCOPE'),
+							h('span', { class: 'count' }, Object.keys(step.values).length + ' values'),
 							h('span', { class: 'grow' }),
-							h('button', { class: 'x', title: 'Move up', onclick: function (e) { e.preventDefault(); move(i, -1) } }, '↑'),
-							h('button', { class: 'x', title: 'Move down', onclick: function (e) { e.preventDefault(); move(i, 1) } }, '↓'),
-							h('button', { class: 'x', title: 'Remove step', onclick: function (e) { e.preventDefault(); d.steps.splice(i, 1); dirty(); render() } }, '×')),
-						h('div', { class: 'bar', style: 'padding: 0 12px' }, targetFields(step, dirty)),
+							many ? h('button', { class: 'x', title: 'Move up', onclick: function (e) { e.preventDefault(); move(i, -1) } }, '↑') : null,
+							many ? h('button', { class: 'x', title: 'Move down', onclick: function (e) { e.preventDefault(); move(i, 1) } }, '↓') : null,
+							many ? h('button', { class: 'x', title: 'Remove this step', onclick: function (e) { e.preventDefault(); d.steps.splice(i, 1); dirty(); render() } }, '×') : null),
+						h('div', { class: 'bar', style: 'padding: 0 12px' }, targetFields(step, dirty),
+							h('label', {}, followBox, ' Only send the scopes that are lit when recalled')),
 						h('div', { style: 'padding: 0 12px 4px' }, valueGroups(step.values, dirty)))
 				}),
-				h('p', { class: 'note' }, 'A script keeps its own copy of every value, so changing or clearing the slots it was built from does not change the script.'),
+				h('p', { class: 'note' }, 'Steps run top to bottom. Values are shown exactly as the console reports them: levels and gains in dB, frequencies in Hz, times in seconds, switches as 0 or 1.'),
 			]
 		}
 		return [list, h('div', { class: 'detail' }, detail)]
@@ -431,9 +417,14 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 				toast('Sent ' + r.sent + ' names'); render()
 			}).catch(fail)
 		} }, 'Send ' + changedCount() + ' changed to console')
-		var setIds = ids('nameSets', S.status.nameSetCount)
-		var set = S.lib.nameSets[N.setId]
-		var setLabel = h('input', { placeholder: 'label', value: set ? set.name : '' })
+		var slotBox = h('input', { class: 'n', type: 'number', min: 1, max: 999, placeholder: 'slot', value: N.slotId,
+			oninput: function (e) { N.slotId = e.target.value } })
+		var slotLabel = h('input', { placeholder: 'button label' })
+		var slotNumber = function () {
+			var n = String(Math.trunc(Number(slotBox.value)))
+			if (!(Number(n) >= 1)) { fail(new Error('Enter a slot number')); return null }
+			return n
+		}
 		var indexes = []
 		for (var i = 1; i <= count; i++) indexes.push(String(i))
 		Object.keys(live).concat(Object.keys(edit)).forEach(function (k) { if (indexes.indexOf(k) < 0) indexes.push(k) })
@@ -441,7 +432,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 
 		return h('div', { class: 'detail' },
 			h('h2', {}, 'Names'),
-			h('p', { class: 'sub' }, 'Read the names from the console, edit them here, and send them back. A name set is a stored copy you can restore from a button.'),
+			h('p', { class: 'sub' }, 'Read the names from the console, edit them here, and send them back. Names can also be stored in a slot and restored from its button.'),
 			h('div', { class: 'bar' },
 				h('button', { class: 'b', onclick: function () {
 					toast('Reading names…')
@@ -459,24 +450,27 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 					api('api/names/apply', { names: a }).then(function (r) { N.live = a; N.edit = {}; toast('Sent ' + r.sent + ' names'); render() }).catch(fail)
 				} }, 'Send all')),
 			h('div', { class: 'bar' },
-				h('label', { class: 'f' }, 'Name set',
-					h('select', { onchange: function (e) { N.setId = e.target.value; render() } }, setIds.map(function (id) {
-						var s = S.lib.nameSets[id]
-						return h('option', { value: id, selected: id === N.setId }, id + (s ? ' · ' + (s.name || when(s.when)) : ' · empty'))
-					}))),
-				h('label', { class: 'f' }, 'Set label', setLabel),
-				h('button', { class: 'b', disabled: !set, onclick: function () {
-					Object.keys(set.names).forEach(function (sec) { N.edit[sec] = Object.assign({}, N.edit[sec], set.names[sec]) })
-					toast('Loaded into the editor. Nothing is sent until you press Send.'); render()
-				} }, 'Load into editor'),
+				h('label', { class: 'f' }, 'Slot', slotBox),
+				h('label', { class: 'f' }, 'Label', slotLabel),
 				h('button', { class: 'b', onclick: function () {
-					if (set && !confirm('Replace name set ' + N.setId + '?')) return
-					api('api/nameset', { id: N.setId, value: { name: setLabel.value, names: all() } }).then(function () { return reload(true) }).then(function () { toast('Saved name set ' + N.setId) }).catch(fail)
-				} }, 'Save editor as set'),
-				h('button', { class: 'b danger', disabled: !set, onclick: function () {
-					if (!confirm('Delete name set ' + N.setId + '?')) return
-					api('api/nameset', { id: N.setId, value: null }).then(function () { return reload(true) }).catch(fail)
-				} }, 'Delete set')),
+					var n = slotNumber(); if (!n) return
+					var slot = S.lib.slots[n], found = 0
+					if (!slot) return fail(new Error('Slot ' + n + ' is empty'))
+					slot.steps.forEach(function (step) {
+						Object.keys(step.values).forEach(function (sfx) {
+							if (!isNameSuffix(sfx)) return
+							;(N.edit[step.section] = N.edit[step.section] || {})[step.index] = String(step.values[sfx].a[0])
+							found++
+						})
+					})
+					if (!found) return fail(new Error('Slot ' + n + ' holds no names'))
+					toast('Loaded ' + found + ' names into the editor. Nothing is sent until you press Send.'); render()
+				} }, 'Load names from slot'),
+				h('button', { class: 'b', onclick: function () {
+					var n = slotNumber(); if (!n) return
+					if (S.lib.slots[n] && !confirm('Slot ' + n + ' is in use. Replace it?')) return
+					api('api/names/slot', { id: n, label: slotLabel.value, names: all() }).then(function () { return reload(true) }).then(function () { toast('Saved names to slot ' + n) }).catch(fail)
+				} }, 'Save shown names to slot')),
 			h('div', { class: 'bar' }, Object.keys(sections()).map(function (id) {
 				return h('button', { class: 'b' + (id === N.section ? ' go' : ''), onclick: function () { N.section = id; render() } },
 					sections()[id].label + ' (' + (S.status.counts[id] || 0) + ')')
@@ -502,7 +496,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		var learned = S.lib.learned || {}
 		return h('div', { class: 'detail' },
 			h('h2', {}, 'Library'),
-			h('p', { class: 'sub' }, Object.keys(S.lib.slots).length + ' captures, ' + Object.keys(S.lib.scripts).length + ' scripts, ' + Object.keys(S.lib.nameSets).length + ' name sets. The library is also saved inside the Companion configuration.'),
+			h('p', { class: 'sub' }, (S.status.kinds || []).map(function (k) { var n = Object.keys(S.lib.slots).filter(function (id) { return S.lib.slots[id].kind === k.id }).length; return n + ' ' + k.label.toLowerCase() + (n === 1 ? ' slot' : ' slots') }).join(', ') + '. The library is also saved inside the Companion configuration.'),
 			h('div', { class: 'bar' },
 				h('button', { class: 'b', onclick: function () {
 					var blob = new Blob([JSON.stringify(S.lib, null, 1)], { type: 'application/json' })
@@ -615,7 +609,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			nav.appendChild(h('button', { class: t[0] === S.tab ? 'on' : '', onclick: function () {
 				if (S.dirty && !confirm('Discard unsaved changes?')) return
 				S.tab = t[0]
-				S.draft = (t[0] === 'slots' || t[0] === 'scripts') && S.sel[t[0]] && S.lib[t[0]][S.sel[t[0]]] ? clone(S.lib[t[0]][S.sel[t[0]]]) : null
+				S.draft = t[0] === 'slots' && S.sel.slots && S.lib.slots[S.sel.slots] ? clone(S.lib.slots[S.sel.slots]) : null
 				setDirty(false); render()
 			} }, t[1]))
 		})
@@ -625,7 +619,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
 		if (!S.status || !S.lib) { add(main, h('div', { class: 'detail' }, h('div', { class: 'empty-state' }, 'Loading…'))); return }
-		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'scripts' ? viewScripts() : S.tab === 'names' ? viewNames() : S.tab === 'setup' ? viewSetup() : viewLibrary())
+		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'setup' ? viewSetup() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
 		if (typingIp && $('consoleip')) {
@@ -651,9 +645,8 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			if (json === libJson && !force) return
 			libJson = json
 			S.lib = lib
-			var bucket = S.tab
-			if ((bucket === 'slots' || bucket === 'scripts') && S.sel[bucket]) {
-				S.draft = lib[bucket][S.sel[bucket]] ? clone(lib[bucket][S.sel[bucket]]) : null
+			if (S.tab === 'slots' && S.sel.slots) {
+				S.draft = lib.slots[S.sel.slots] ? clone(lib.slots[S.sel.slots]) : null
 				S.dirty = false
 			}
 			render()

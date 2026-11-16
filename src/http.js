@@ -1,5 +1,6 @@
 import { SECTIONS, SECTION_IDS, SCOPES, SCOPE_IDS } from './params.js'
-import { cleanSlot, cleanScript, cleanNameSet, cleanNames, cleanLibrary } from './validate.js'
+import { KINDS } from './engine.js'
+import { cleanSlot, cleanNames, cleanLibrary, namesToSteps } from './validate.js'
 import { PAGE } from './webui.js'
 import { consoleSetup } from './network.js'
 
@@ -14,7 +15,7 @@ const json = (data, status = 200) => ({
 })
 
 /**
- * @param {{engine: import('./engine.js').Engine | null, config: object}} self
+ * @param {{engine: import('./engine.js').Engine | null, config: object, setConsoleHost: (ip: string) => Promise<void>}} self
  * @param {{method: string, path: string, body?: string}} request
  */
 export async function handleHttp(self, request) {
@@ -31,10 +32,9 @@ export async function handleHttp(self, request) {
 				...engine.status(),
 				sections: SECTIONS,
 				scopeDefs: SCOPES,
+				kinds: KINDS,
 				setup: consoleSetup(self.config),
 				slotCount: Number(self.config.slotCount),
-				scriptCount: Number(self.config.scriptCount),
-				nameSetCount: Number(self.config.nameSetCount),
 			})
 		}
 		if (method === 'GET' && path === '/api/lib') return json(engine.lib)
@@ -46,19 +46,6 @@ export async function handleHttp(self, request) {
 		const needId = () => {
 			if (!/^\d{1,3}$/.test(id) || Number(id) < 1) throw new Error('A slot number from 1 to 999 is required')
 		}
-		const store = (bucket, clean) => {
-			needId()
-			if (body.value === null || body.value === undefined) delete engine.lib[bucket][id]
-			else {
-				const value = clean(body.value)
-				if (!value) throw new Error('That entry is not valid')
-				engine.lib[bucket][id] = value
-			}
-			engine.persist()
-			engine.changed()
-			return json({ ok: true })
-		}
-
 		const needIp = () => {
 			const ip = String(body.ip ?? '').trim()
 			const parts = ip.split('.')
@@ -66,6 +53,11 @@ export async function handleHttp(self, request) {
 				throw new Error('That is not an IP address')
 			}
 			return ip
+		}
+		const saved = () => {
+			engine.persist()
+			engine.changed()
+			return json({ ok: true })
 		}
 
 		switch (path) {
@@ -75,40 +67,52 @@ export async function handleHttp(self, request) {
 			case '/api/setup/apply':
 				await self.setConsoleHost(needIp())
 				return json({ ok: true })
-			case '/api/slot':
-				return store('slots', cleanSlot)
-			case '/api/script':
-				return store('scripts', cleanScript)
-			case '/api/nameset':
-				return store('nameSets', cleanNameSet)
+			case '/api/slot': {
+				// Store an edited slot, or delete it when value is null
+				needId()
+				if (body.value === null || body.value === undefined) delete engine.lib.slots[id]
+				else {
+					const slot = cleanSlot(body.value)
+					if (!slot) throw new Error('That slot is not valid: it needs at least one step')
+					engine.lib.slots[id] = slot
+				}
+				return saved()
+			}
+			case '/api/slot/recall': {
+				// Send a slot to the channels it was made from. Steps that follow the scope
+				// toggles use the scopes ticked on the page, not the ones lit on the buttons.
+				needId()
+				const slot = engine.lib.slots[id]
+				if (!slot) throw new Error('That slot is empty')
+				const scopes = new Set((Array.isArray(body.scopes) ? body.scopes : []).filter((s) => SCOPE_IDS.includes(s)))
+				let sent = 0
+				for (const step of slot.steps) {
+					sent += engine.sendValues(step.section, step.index, step.values, step.fixed ? null : scopes)
+				}
+				return json({ sent })
+			}
 			case '/api/names/fetch': {
 				const sections = Array.isArray(body.sections) ? body.sections.filter((s) => SECTIONS[s]) : SECTION_IDS
 				return json({ names: await engine.fetchNames(sections), online: engine.online })
 			}
 			case '/api/names/apply':
 				return json({ sent: engine.applyNames(cleanNames(body.names)) })
-			case '/api/slot/recall': {
+			case '/api/names/slot': {
+				// Store names from the page's editor as a names slot
 				needId()
-				const slot = engine.lib.slots[id]
-				if (!slot) throw new Error('That slot is empty')
-				const scopes = new Set((Array.isArray(body.scopes) ? body.scopes : []).filter((s) => SCOPE_IDS.includes(s)))
-				let sent = 0
-				for (const c of slot.channels) sent += engine.sendValues(c.section, c.index, c.values, scopes)
-				return json({ sent })
-			}
-			case '/api/script/run': {
-				needId()
-				const script = engine.lib.scripts[id]
-				if (!script) throw new Error('That script is empty')
-				let sent = 0
-				for (const step of script.steps) sent += engine.sendValues(step.section, step.index, step.values, null)
-				return json({ sent })
+				const steps = namesToSteps(body.names)
+				if (!steps.length) throw new Error('There are no names to save')
+				engine.lib.slots[id] = {
+					label: String(body.label ?? ''),
+					when: new Date().toISOString(),
+					kind: 'names',
+					steps,
+				}
+				return saved()
 			}
 			case '/api/import':
 				engine.lib = cleanLibrary(body.lib)
-				engine.persist()
-				engine.changed()
-				return json({ ok: true })
+				return saved()
 			default:
 				return json({ error: 'Not found' }, 404)
 		}

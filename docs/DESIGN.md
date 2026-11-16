@@ -70,10 +70,21 @@ sensible scope without extra bookkeeping, and the web page can group values the 
 preamp, and solo/listen states are left out of the address list. If it isn't captured it
 can't be recalled by mistake. A test enforces this.
 
-**Scripts copy values.** A script step stores the values that were sent when it was
-recorded, plus the channel they went to. Re-using or clearing a slot later does not change
-a script. The cost is a larger library; the benefit is that a script cannot change
-underneath the operator.
+**One kind of slot, made of steps.** Everything stored is a slot, and a slot is a list of
+steps: a channel, and the values to send to it. A step either follows the recall-scope
+toggles when it is sent (a captured channel: all of it is stored, the operator chooses
+what to put back) or is fixed and sent in full (a script step, a saved name). "Capture",
+"script" and "names" are only labels that pick the slot's colour. This replaced separate
+numbered lists of captures, scripts and name sets, each with its own buttons, actions and
+settings. The operator's gesture is always the same: press a button to start building,
+do it on the console, press a slot.
+
+**Scripts copy values, so they cannot recurse.** Recording a script means pressing slots
+while SCRIPT REC is lit. Each press is recalled live and the values actually sent, to the
+channels they actually went to, are copied into the script as fixed steps. A script that
+presses another script simply receives a copy of that script's steps. Nothing refers to
+another slot by number, so there is no way to build a loop, and re-using or clearing a
+slot never changes a script made from it. The cost is a larger library.
 
 **Echo suppression.** The console echoes values written to it. Without care, a recall
 would look like the operator touching that channel. Every address the module (or the
@@ -128,3 +139,16 @@ console and network.
   channels. The stored format changed, with conversion of 0.1.0 libraries on load.
 - Because a fader move arrives as many messages, a channel already in the capture, or
   being read, is not read again.
+
+### 2026-11-16: single slot type, 0.2.0
+
+- At the maintainer's request, captures, scripts and name sets were merged into one kind
+  of slot. The engine's stored model became a list of steps with a "fixed" flag; see the
+  decisions above. The three sets of buttons, actions, feedbacks, variables and settings
+  collapsed into one, with a "holds" feedback to colour slots by content.
+- Scripts containing scripts needed no extra mechanism: recording already copies what is
+  sent. A test records a script that includes itself and stores it over itself, then
+  checks the number of messages sent is finite and exact.
+- Libraries from 0.1.0 and the unreleased 0.1.1 builds are converted on load: captures
+  become step lists, and scripts and name sets move into the first free slots.
+- The breaking change to buttons and stored data is why this became 0.2.0 and not 0.1.1.

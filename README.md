@@ -7,11 +7,11 @@ channel names, and browse or edit all of it in a web page.
 
 See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
-![The captures page](docs/images/captures.png)
+![The slots page](docs/images/slots.png)
 
 ## Status
 
-**0.1.x are test releases.** The logic is covered by 48 automated tests against a
+**0.x are test releases.** The logic is covered by 50 automated tests against a
 simulated console. It has not yet been run against DiGiCo software or a console. The
 address list comes from open-source observation of the iPad app and needs confirming on
 each console. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).
