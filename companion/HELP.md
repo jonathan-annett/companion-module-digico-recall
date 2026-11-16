@@ -46,7 +46,8 @@ Everything is in the **Presets** tab, ready to drag onto pages.
   or CANCEL. Nothing is sent to the console.
 - **GRAB**: adds the last channel you touched to the capture, without arming first.
 - **TO**: where recalls land. ORIGINAL sends a capture back to the channel it came from.
-  TOUCHED sends it to whichever channel you touched last, so a capture works like a
+  TOUCHED (purple) sends it to whichever channel you touched last, and the button names
+  that channel ("TO In 5 Vox") so you can see where a recall will land, so a capture works like a
   preset you can drop on any channel (inputs, groups, auxes and matrices share EQ and
   dynamics addresses, so input to group works too). A capture holding several channels always
   goes back to its own channels.

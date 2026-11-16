@@ -8,7 +8,7 @@ export function getVariableDefinitions(config) {
 		touched: { name: 'Last touched channel' },
 		held: { name: 'Capture waiting to be stored' },
 		scopes: { name: 'Active recall scopes' },
-		target: { name: 'Recall target mode' },
+		target: { name: 'Where recalls go: ORIGINAL, or the last touched channel' },
 		script_steps: { name: 'Steps in the script being recorded' },
 		names_count: { name: 'Names in the list being saved' },
 	}
@@ -29,7 +29,8 @@ export function getVariableValues(engine, config) {
 		scopes: SCOPES.filter((s) => engine.scopes.has(s.id))
 			.map((s) => s.label)
 			.join(' '),
-		target: engine.targetMode === 'touched' ? 'TOUCHED' : 'ORIGINAL',
+		// In "last touched" mode, name the channel a recall will land on as soon as one is touched
+		target: engine.targetMode === 'touched' ? status.touchedLabel || 'TOUCHED' : 'ORIGINAL',
 		script_steps: status.scriptSteps ? String(status.scriptSteps) : '',
 		names_count: status.namesRecording ? String(status.namesCount) : '',
 	}

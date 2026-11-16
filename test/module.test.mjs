@@ -181,12 +181,14 @@ await test('recall to the last touched channel instead of the original', async (
 	await run('scopes', { scopes: ['comp'] })
 	sim.surface('/Group_Outputs/2/fader', 'f', [-3])
 	await until(() => mod.engine.lastTouched?.section === 'Group_Outputs', 'touch on group 2')
+	await until(() => mod.vars.target === 'Grp 2 Grp2', 'TO button names the channel that will be written to')
 	const before5 = sim.get('/Input_Channels/5/Dynamics/comp_ratio_1')
 	await run('slot', { slot: 1 })
 	const want = mod.engine.lib.slots['1'].channels[0].values['Dynamics/comp_ratio_1'].a[0]
 	await until(() => sim.get('/Group_Outputs/2/Dynamics/comp_ratio_1') === want, 'comp copied to group 2')
 	assert.equal(sim.get('/Input_Channels/5/Dynamics/comp_ratio_1'), before5)
 	await run('target', { mode: 'original' })
+	await until(() => mod.vars.target === 'ORIGINAL', 'TO button back to ORIGINAL')
 })
 
 await test('graphic EQ capture and recall', async () => {

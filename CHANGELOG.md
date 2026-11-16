@@ -34,6 +34,8 @@ Nothing yet.
   A multi-channel capture always returns to its own channels, whatever the recall target
   is set to. The web page lists and edits each channel in a capture. Libraries saved by
   0.1.0 (one channel per slot) are read and converted automatically.
+- The TO button, when set to the last touched channel, now names that channel ("TO In 5
+  Vox") instead of reading "TOUCHED", so you can see where a recall will land.
 - Clearing: hold CAPTURE for two seconds and the next slot, script or name set button
   pressed is emptied. Clear mode ends after one press, after ten seconds, or when CAPTURE
   or CANCEL is tapped. The rows of "CLEAR n" preset buttons are gone; the clear actions
