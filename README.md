@@ -12,7 +12,7 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 60 automated tests against a
+**0.x are test releases.** The logic is covered by 65 automated tests against a
 simulated console. It has been connected to the Quantum 338 offline software, but the
 manual test plan has not yet been run there or on a console. The
 parameter names have been checked against DiGiCo's own iPad command set for Quantum 338;
@@ -34,7 +34,8 @@ Needs Companion 4.3 or newer.
 
 Download `digico-recall-<version>.tgz` from the
 [releases page](https://github.com/jonathan-annett/companion-module-digico-recall/releases)
-and load it in Companion with **Import module package** on the Connections page.
+and load it in Companion with **Import module package**, then select that version on the
+connection. Companion keeps earlier versions, so you can switch back.
 
 ## Development
 

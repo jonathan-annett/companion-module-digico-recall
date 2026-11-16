@@ -31,6 +31,12 @@ The console accepts one iPad-type device. To keep using a real iPad as well, tur
 **Relay a real iPad through this module** and point the iPad app at the Companion computer
 instead of the console.
 
+## Updating the module
+
+After importing a newer module package, open the connection (or the module on the Modules
+page) and select the new version. Companion keeps the earlier versions, so you can switch
+back if you need to.
+
 ## Buttons
 
 Everything is in the **Presets** tab, ready to drag onto pages. There is one idea behind
@@ -64,6 +70,10 @@ its contents, and the text of the last one recalled turns yellow.
   In 5 Vox"); recalls now land there, so one capture works like a preset you can drop on
   any channel (input to group works too). Captures of several channels, scripts and names
   always go to the channels they were made for.
+  - **Ganged pairs.** If the channel you touched is ganged with another (a stereo pair of
+    graphic EQs, say), the module notices because both report every move together. TO
+    then shows both ("TO GEQ 9+10 PC 1 L") and a recall is sent to both. The module has to
+    see the pair move a few times before it knows; moving one band is enough.
 - **CANCEL**: stops whatever is being built.
 
 **Recall scope**

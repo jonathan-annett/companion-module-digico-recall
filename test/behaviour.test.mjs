@@ -655,6 +655,135 @@ test('settings page shows the console row for the saved ports', () => {
 	)
 })
 
+// The pattern below is what the Quantum 338 offline software sent when one band of a
+// ganged pair of graphic EQs (9 and 10, "PC 1 L" and "PC 1 R") was moved: the same
+// control on both, 0 to 1 ms apart, about twenty times per move. offset is how far apart
+// the two curves sit: ganged graphics track each other from wherever each one was.
+async function moveGanged(sim, band, values, offset = 0, members = [9, 10]) {
+	for (const v of values) {
+		sim.surface(`/Graphic_EQ/${members[0]}/geq_gain_${band}`, 'f', [v])
+		sim.surface(`/Graphic_EQ/${members[1]}/geq_gain_${band}`, 'f', [v + offset])
+		await sleep(12)
+	}
+}
+
+test('gangs: two graphic EQs that always move together are recognised as a pair', async (t) => {
+	const { sim, engine } = await rig(t, { audit: true }, { counts: { Graphic_EQ: 12 } })
+	sim.values.set('/Graphic_EQ/9/name', { t: 's', a: ['PC 1 L'] })
+	sim.values.set('/Graphic_EQ/10/name', { t: 's', a: ['PC 1 R'] })
+
+	// A single graphic moved on its own: no gang
+	for (const v of [-4.7, -5.5, -6.4, -7.37]) {
+		sim.surface('/Graphic_EQ/1/geq_gain_12', 'f', [v])
+		await sleep(12)
+	}
+	await until(() => engine.lastTouched?.index === 1, 'GEQ 1 touched')
+	assert.deepEqual(engine.gangList(), [])
+
+	await moveGanged(sim, 13, [-0.5, -1.2, -2.1, -3.02])
+	await until(() => engine.gangList().length === 1, 'pair recognised')
+	assert.deepEqual(engine.gangList(), [{ section: 'Graphic_EQ', members: [9, 10] }])
+	assert.deepEqual(engine.gangPartners('Graphic_EQ', 9), [10])
+	assert.deepEqual(engine.gangPartners('Graphic_EQ', 10), [9])
+	assert.deepEqual(engine.gangPartners('Graphic_EQ', 1), [])
+	await until(() => engine.touchedLabel() === 'GEQ 9+10 PC 1 L', 'the buttons name the pair')
+	assert.ok(engine.audit.entries.some((e) => e.to === 'Ganged: Graphic EQ 9 and 10 move together'))
+	assert.equal(engine.status().gangs.length, 1)
+})
+
+test('gangs: a pair with different curves is recognised by moving the same amount', async (t) => {
+	const { sim, engine } = await rig(t, {}, { counts: { Graphic_EQ: 12 } })
+	// The right side sits 4 dB below the left on this band, and tracks it
+	await moveGanged(sim, 8, [2, 1.25, 0.5, -0.25, -1, -1.75], -4)
+	await until(() => engine.gangList().length === 1, 'pair recognised from equal movement')
+	assert.deepEqual(engine.gangList(), [{ section: 'Graphic_EQ', members: [9, 10] }])
+
+	// Two graphics changing the same band at the same moment by different amounts are not a pair
+	for (const [a, b] of [
+		[1, 5],
+		[2, 3],
+		[3, 8],
+		[4, 2],
+		[5, 9],
+	]) {
+		sim.surface('/Graphic_EQ/3/geq_gain_8', 'f', [a])
+		sim.surface('/Graphic_EQ/4/geq_gain_8', 'f', [b])
+		await sleep(12)
+	}
+	await sleep(60)
+	assert.deepEqual(engine.gangPartners('Graphic_EQ', 3), [])
+})
+
+test('gangs: one coincidence is not enough, and different kinds of channel are never paired', async (t) => {
+	const { sim, engine } = await rig(t)
+	// Two inputs muted at the same instant, once (a snapshot, or two fingers)
+	sim.surface('/Input_Channels/1/mute', 'f', [1])
+	sim.surface('/Input_Channels/2/mute', 'f', [1])
+	// An input and a group that happen to report the same thing repeatedly
+	for (let i = 0; i < 5; i++) {
+		sim.surface('/Input_Channels/3/fader', 'f', [-i])
+		sim.surface('/Group_Outputs/3/fader', 'f', [-i])
+		await sleep(12)
+	}
+	await sleep(60)
+	assert.deepEqual(engine.gangList(), [])
+})
+
+test('gangs: recalling to the last touched channel sets every member of its gang', async (t) => {
+	const { sim, engine } = await rig(t, {}, { counts: { Graphic_EQ: 12 } })
+	await engine.captureToHold('Graphic_EQ', 1)
+	engine.pressSlot(1)
+	const want = engine.lib.slots['1'].steps[0].values.geq_gain_20.a[0]
+
+	await moveGanged(sim, 16, [-1, -2, -3, -3.4])
+	await until(() => engine.gangList().length === 1, 'pair recognised')
+	engine.setTargetMode('touched')
+	engine.setScopes(['eq'])
+	assert.equal(engine.pressSlot(1), 'recalled')
+	await until(() => sim.get('/Graphic_EQ/9/geq_gain_20') === want, 'left side set')
+	await until(() => sim.get('/Graphic_EQ/10/geq_gain_20') === want, 'right side set')
+	assert.notEqual(sim.get('/Graphic_EQ/11/geq_gain_20'), want, 'a graphic outside the pair is untouched')
+
+	// Recorded into a script, the pair becomes two steps
+	engine.toggleScriptRecord()
+	engine.pressSlot(1)
+	engine.toggleScriptRecord()
+	engine.pressSlot(2)
+	assert.deepEqual(engine.lib.slots['2'].steps.map((step) => step.index).sort(), [10, 9])
+
+	// With the target on ORIGINAL the gang plays no part
+	engine.setTargetMode('original')
+	await engine.transport.drained()
+	await sleep(100)
+	sim.received.length = 0
+	engine.pressSlot(1)
+	await engine.transport.drained()
+	await sleep(60)
+	assert.ok(sim.received.length > 0 && sim.received.every((m) => m.path.startsWith('/Graphic_EQ/1/')))
+})
+
+test('gangs: when one member keeps moving alone, the pair is dropped; one lone report is forgiven', async (t) => {
+	const { sim, engine } = await rig(t, { audit: true }, { counts: { Graphic_EQ: 12 } })
+	await moveGanged(sim, 24, [1, 2, 3, 4.5])
+	await until(() => engine.gangList().length === 1, 'pair recognised')
+	await sleep(120)
+	// One report from GEQ 9 alone (its partner pinned at the end of its range, say), then together again
+	sim.surface('/Graphic_EQ/9/geq_gain_24', 'f', [5])
+	await sleep(120)
+	await moveGanged(sim, 24, [5.5, 6])
+	await sleep(120)
+	assert.equal(engine.gangList().length, 1, 'still a pair')
+	// Un-ganged on the console: now only GEQ 9 moves, repeatedly
+	for (const v of [5, 4, 3, 2, 1]) {
+		sim.surface('/Graphic_EQ/9/geq_gain_24', 'f', [v])
+		await sleep(100)
+	}
+	await until(() => engine.gangList().length === 0, 'pair dropped')
+	assert.ok(engine.audit.entries.some((e) => e.to === 'No longer ganged: Graphic EQ 9 and 10'))
+	assert.equal(engine.touchedLabel().startsWith('GEQ 9'), true)
+	assert.equal(engine.touchedLabel().includes('+'), false)
+})
+
 test('audit log: off by default, and nothing is recorded until it is switched on', async (t) => {
 	const { sim, engine } = await rig(t)
 	assert.equal(engine.audit.enabled, false)

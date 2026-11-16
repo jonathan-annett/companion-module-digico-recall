@@ -208,3 +208,26 @@ console and network.
   control group membership, bus solo and sends-on-faders modes, surround pan.
 - DiGiCo's file is not included in the repository. The check can be repeated with
   `node tools/check-dosc.mjs <file>`; the SD-range command sets are still to do.
+
+### 2026-11-16: first real traffic, and gangs
+
+- First data from DiGiCo software: an audit log CSV from the Quantum 338 offline software.
+  It shows that the console announces graphic EQ band moves to the iPad-type device, that
+  `/Graphic_EQ/<n>/geq_gain_<band>` is the right address, that values are in dB, and that
+  the module's name lookup works ("GEQ 9" became "GEQ 9 PC 1 L" after the first touch). A
+  move arrives as about twenty messages, which the log merges into one line.
+- It also shows ganging. Moving one band of a ganged pair (GEQ 9 and 10) produced the same
+  control on both, 0 to 1 ms apart, every time. The maintainer pointed out that ganged
+  graphics with different curves do not hold equal values; they track from where each was.
+- Detection rule built from that: two channels of the same kind reporting the same control
+  within 5 ms, having moved by the same amount (or, for text and first reports, holding
+  the same value), three times within three seconds, are ganged. A member that reports
+  three times in a row without its partner following within 80 ms is un-ganged; a single
+  miss is forgiven in case the partner is pinned at the end of its range. A snapshot
+  recall that happens to move two channels identically could create a false pair; it is
+  dropped as soon as one of them is moved alone.
+- Use: display, and sending a "last touched" recall to every member. Unknown and to be
+  tested (M28): whether the console itself applies a value written to one ganged member
+  to the other. If it applies the same movement to the partner, writing absolute values
+  to both members in turn would not land both on the preset unless their curves already
+  matched, and the recall would need to change (for example, write only one member).

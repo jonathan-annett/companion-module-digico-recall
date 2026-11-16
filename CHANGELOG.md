@@ -9,11 +9,11 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.1] - unreleased
+## [0.2.2] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 were test builds
-and were never published; this entry covers everything since 0.1.0.
+imported module with another build of the same version. 0.1.1, 0.2.0 and 0.2.1 were test
+builds and were never published; this entry covers everything since 0.1.0.
 
 Reworked after the first sessions with Companion and the Quantum 338 offline software.
 Buttons made with 0.1.0 for scripts, name sets and clearing need replacing with the new
@@ -41,6 +41,15 @@ presets; stored libraries are converted automatically.
 
 ### Added
 
+- **Ganged channels are recognised.** The console doesn't say which channels are ganged,
+  but ganged channels report every change on both members at the same instant, moving by
+  the same amount (they need not hold the same values). The module spots that, shows the
+  pair on the GRAB and TO buttons ("GEQ 9+10 PC 1 L"), notes it in the log, and when a
+  capture is recalled to the last touched channel it is sent to every member of that
+  channel's gang, so one press sets both sides of a stereo pair. The link is dropped if a
+  member keeps moving on its own. Seen so far on graphic EQs on the Quantum 338 offline
+  software; how the console treats values written to one member of a gang is not yet
+  known.
 - **Audit log.** Optional. Records every change the console reports with the time it
   arrived, the channel, the control and the value before and after; a fader move is one
   entry. Also records what the module does and connection changes. A LOG button switches

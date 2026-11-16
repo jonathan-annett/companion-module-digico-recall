@@ -21,6 +21,16 @@ import nodePath from 'node:path'
 const ECHO_WINDOW_MS = 1500
 const STATUS_POLL_MS = 5000
 const METER_POLL_MS = 500
+
+// Ganged channels (a stereo pair of graphic EQs, say) report every change on both members
+// at the same instant. Measured on the Quantum 338 offline software: 0 to 1 ms apart. The
+// members move by the same amount but need not hold the same values.
+const GANG_MS = 5 // two channels reporting the same value this close together count as one hit
+const GANG_HITS = 3 // hits needed, within GANG_WINDOW_MS, before the channels are treated as ganged
+const GANG_WINDOW_MS = 3000
+const GANG_FOLLOW_MS = 80 // a ganged partner is expected to report within this
+const GANG_MISSES = 3 // times in a row a partner may fail to follow before the link is dropped
+const GANG_TOLERANCE = 0.02 // how closely two movements must match to count as the same (dB, Hz ...)
 const METER_PACKET_LIMIT = 30000
 
 function uniqueTargets(targets) {
@@ -131,6 +141,12 @@ export class Engine {
 		this.chain = Promise.resolve()
 		this.transport = null
 		this.pollTimer = null
+		this.gangs = new Map() // 'Section/n' -> Set of 'Section/n' it moves with
+		this.gangRecent = [] // the last few operator changes, for spotting ones that arrive together
+		this.gangHits = new Map() // 'a|b' -> times of recent coincidences
+		this.gangPending = [] // ganged changes waiting to see whether the partner followed
+		this.gangMisses = new Map() // 'a|b' -> consecutive times the partner did not follow
+		this.gangValues = new Map() // address -> last value seen, to measure how far a control moved
 		this.meterCap = null // a meter capture in progress
 		this.relayActive = false // set by the Companion instance while a real iPad is relayed
 		this.meterCaptures = [] // finished captures, newest last
@@ -174,6 +190,7 @@ export class Engine {
 
 	poll() {
 		if (!this.transport) return
+		this.checkGangFollowers(Date.now())
 		const wasOnline = this.online
 		this.online = Date.now() - this.lastReply < STATUS_POLL_MS * 2 + 1000
 		if (wasOnline !== this.online) {
@@ -228,6 +245,7 @@ export class Engine {
 		if (this.batch && this.batch.want.has(m.path)) {
 			if (m.args.length) {
 				this.audit.note(m.path, m.args)
+				if (typeof m.args[0] === 'number') this.gangValues.set(m.path.slice(1), m.args[0])
 				this.batch.take(m)
 			}
 			return
@@ -279,6 +297,7 @@ export class Engine {
 			args: m.args,
 		})
 
+		this.noteGang(addr, m.args)
 		this.learn(addr)
 		this.touch(addr.section, addr.index)
 	}
@@ -302,6 +321,128 @@ export class Engine {
 		} else if (this.namesRec) {
 			void this.addNameToList(section, index)
 		} else if (!same) this.changed()
+	}
+
+	// ---- gangs -------------------------------------------------------------------------
+	// The console doesn't say which channels are ganged, but ganged channels give themselves
+	// away: every change arrives on both at the same moment with the same value.
+
+	noteGang(addr, args) {
+		const now = Date.now()
+		const key = `${addr.section}/${addr.index}`
+		const path = `${key}/${addr.suffix}`
+		const number = typeof args[0] === 'number' ? args[0] : null
+		// How far this control moved. Ganged channels need not hold the same values (two
+		// graphics with different curves track each other from where they were), but they move
+		// by the same amount. Text and first-ever reports are compared by value instead.
+		const before = this.gangValues.get(path)
+		const delta = number !== null && typeof before === 'number' ? number - before : null
+		this.gangValues.set(path, number ?? JSON.stringify(args))
+		const value = JSON.stringify(args)
+		this.checkGangFollowers(now)
+
+		for (const other of this.gangRecent) {
+			if (now - other.t > GANG_MS) continue
+			if (other.key === key || other.section !== addr.section || other.suffix !== addr.suffix) continue
+			const together =
+				delta !== null && other.delta !== null
+					? Math.abs(delta - other.delta) < GANG_TOLERANCE && Math.abs(delta) > 0
+					: other.value === value
+			if (!together) continue
+			const pair = [key, other.key].sort().join('|')
+			const hits = (this.gangHits.get(pair) ?? []).filter((t) => now - t < GANG_WINDOW_MS)
+			hits.push(now)
+			this.gangHits.set(pair, hits)
+			if (hits.length >= GANG_HITS && !this.gangs.get(key)?.has(other.key)) this.linkGang(key, other.key)
+		}
+		this.gangRecent.push({ t: now, key, section: addr.section, suffix: addr.suffix, value, delta })
+		if (this.gangRecent.length > 64) this.gangRecent.shift()
+
+		// If this channel is ganged, each partner should report the same control within moments
+		for (const partner of this.gangs.get(key) ?? []) {
+			this.gangPending.push({ t: now, key, partner, suffix: addr.suffix })
+		}
+	}
+
+	/**
+	 * Drop a gang link when a member keeps moving without its partner. One miss is
+	 * forgiven: a partner pinned at the end of its range may have nothing to report.
+	 */
+	checkGangFollowers(now) {
+		if (!this.gangPending.length) return
+		const waiting = []
+		for (const pending of this.gangPending) {
+			if (now - pending.t < GANG_FOLLOW_MS) {
+				waiting.push(pending)
+				continue
+			}
+			if (!this.gangs.get(pending.key)?.has(pending.partner)) continue
+			const pair = [pending.key, pending.partner].sort().join('|')
+			const followed = this.gangRecent.some(
+				(r) => r.key === pending.partner && r.suffix === pending.suffix && Math.abs(r.t - pending.t) <= GANG_FOLLOW_MS,
+			)
+			if (followed) {
+				this.gangMisses.delete(pair)
+				continue
+			}
+			const misses = (this.gangMisses.get(pair) ?? 0) + 1
+			this.gangMisses.set(pair, misses)
+			if (misses >= GANG_MISSES) {
+				this.gangMisses.delete(pair)
+				this.unlinkGang(pending.key, pending.partner)
+			}
+		}
+		this.gangPending = waiting
+	}
+
+	gangLabel(keyA, keyB) {
+		const section = keyA.split('/')[0]
+		const [low, high] = [keyA, keyB].map((key) => Number(key.split('/')[1])).sort((x, y) => x - y)
+		return `${SECTIONS[section].label} ${low} and ${high}`
+	}
+
+	linkGang(a, b) {
+		for (const [x, y] of [
+			[a, b],
+			[b, a],
+		]) {
+			if (!this.gangs.has(x)) this.gangs.set(x, new Set())
+			this.gangs.get(x).add(y)
+		}
+		this.audit.event(`Ganged: ${this.gangLabel(a, b)} move together`)
+		this.log('info', `Ganged: ${this.gangLabel(a, b)}`)
+		this.changed()
+	}
+
+	unlinkGang(a, b) {
+		this.gangs.get(a)?.delete(b)
+		this.gangs.get(b)?.delete(a)
+		this.gangHits.delete([a, b].sort().join('|'))
+		this.audit.event(`No longer ganged: ${this.gangLabel(a, b)}`)
+		this.changed()
+	}
+
+	/** Every gang once, as { section, members } with the member numbers in order. */
+	gangList() {
+		const seen = new Set()
+		const out = []
+		for (const [key, partners] of this.gangs) {
+			if (!partners.size) continue
+			const [section, index] = key.split('/')
+			const members = [Number(index), ...this.gangPartners(section, Number(index))].sort((x, y) => x - y)
+			const id = `${section}/${members.join('+')}`
+			if (seen.has(id)) continue
+			seen.add(id)
+			out.push({ section, members })
+		}
+		return out
+	}
+
+	/** The numbers of the channels ganged with this one, lowest first. */
+	gangPartners(section, index) {
+		return [...(this.gangs.get(`${section}/${index}`) ?? [])]
+			.map((key) => Number(key.split('/')[1]))
+			.sort((x, y) => x - y)
 	}
 
 	/** Ask for a touched channel's name, so buttons can show "In 5 Vox" rather than "In 5". */
@@ -491,6 +632,7 @@ export class Engine {
 			this.transport.send(path, v.t, v.a)
 			this.sentAt.set(path, now)
 			this.audit.note(path, v.a)
+			if (typeof v.a[0] === 'number') this.gangValues.set(path.slice(1), v.a[0])
 			n++
 		}
 		if (this.sentAt.size > 5000) {
@@ -536,17 +678,24 @@ export class Engine {
 		}
 		const slot = this.lib.slots[id]
 		if (!slot) return 'empty'
-		// "Last touched" only redirects a capture of one channel; anything else goes where it was aimed.
+		// "Last touched" only redirects a capture of one channel; anything else goes where it was
+		// aimed. If the touched channel is ganged, its partners get the same values, so one
+		// press sets both sides of a stereo pair.
 		const redirect = slot.steps.length === 1 && !slot.steps[0].fixed
-		const targets = []
+		const sends = [] // [step, target]
 		for (const step of slot.steps) {
 			const target = redirect ? this.resolveTarget(step) : { section: step.section, index: step.index }
 			if (!target) return 'mismatch'
-			targets.push(target)
+			sends.push([step, target])
+			if (redirect && this.targetMode === 'touched') {
+				for (const index of this.gangPartners(target.section, target.index)) {
+					sends.push([step, { section: target.section, index }])
+				}
+			}
 		}
+		const targets = sends.map(([, target]) => target)
 		let n = 0
-		slot.steps.forEach((step, i) => {
-			const target = targets[i]
+		for (const [step, target] of sends) {
 			const scopes = step.fixed ? null : this.scopes
 			n += this.sendValues(target.section, target.index, step.values, scopes)
 			if (this.scriptRec) {
@@ -566,7 +715,7 @@ export class Engine {
 					})
 				}
 			}
-		})
+		}
 		this.lastRecalled = id
 		const scopeNote = slot.steps.some((step) => !step.fixed)
 			? ` [${SCOPE_IDS.filter((scope) => this.scopes.has(scope))
@@ -919,7 +1068,14 @@ export class Engine {
 
 	touchedLabel() {
 		const t = this.lastTouched
-		return t ? describe(t.section, t.index, this.names[t.section]?.[t.index]) : ''
+		if (!t) return ''
+		// A ganged pair reads "GEQ 9+10 PC 1 L"
+		const members = [t.index, ...this.gangPartners(t.section, t.index)].sort((x, y) => x - y)
+		return describe(
+			t.section,
+			members.join('+'),
+			this.names[t.section]?.[members[0]] ?? this.names[t.section]?.[t.index],
+		)
 	}
 
 	stateLabel() {
@@ -953,6 +1109,7 @@ export class Engine {
 			audit: this.audit.enabled,
 			meterCapturing: !!this.meterCap,
 			relay: this.relayActive,
+			gangs: this.gangList(),
 			namesRecording: !!this.namesRec,
 			namesCount: this.namesCount(),
 		}
