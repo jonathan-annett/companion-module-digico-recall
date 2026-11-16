@@ -1,0 +1,30 @@
+{
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"type": "connection",
+	"id": "digico-recall",
+	"name": "digico-recall",
+	"shortname": "recall",
+	"description": "Capture and recall channel settings, scripts and names on DiGiCo SD and Quantum consoles",
+	"version": "0.1.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/jonathan-annett/companion-module-digico-recall.git",
+	"bugs": "https://github.com/jonathan-annett/companion-module-digico-recall/issues",
+	"maintainers": [
+		{
+			"name": "Jonathan Annett"
+		}
+	],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../src/main.js",
+		"permissions": {
+			"filesystem": true
+		}
+	},
+	"legacyIds": [],
+	"manufacturer": "DiGiCo",
+	"products": ["SD7", "SD10", "SD8", "SD9", "SD11", "SD12", "Quantum 338", "Quantum 225", "Quantum 5", "Quantum 7"],
+	"keywords": ["DiGiCo", "SD", "Quantum", "Mixer", "OSC", "Preset", "Recall", "Snapshot", "Channel names"]
+}
