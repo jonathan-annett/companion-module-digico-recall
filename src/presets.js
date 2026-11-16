@@ -65,7 +65,7 @@ export function getPresets(label, config) {
 			scope.label,
 			[act('scope', { scope: scope.id, mode: 'toggle' })],
 			[fb('scope', { scope: scope.id })],
-			'18',
+			'14', // the largest size at which five letters (LEVEL, DELAY, OTHER) stay on one line
 		)
 	}
 

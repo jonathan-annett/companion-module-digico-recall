@@ -25,6 +25,8 @@ Nothing yet.
 
 ### Fixed
 
+- Recall scope preset buttons wrapped their labels (COM/P, LEVE/L, DELA/Y, NAM/E, OTHE/R).
+  The text size is now 14 so each label stays on one line.
 - The module appeared in Companion's connection list as "DiGiCo: SD7; SD10; SD8; ..."
   instead of by name. Companion builds that title from the manifest's manufacturer and
   product list, which had been filled with console models. The product is now
