@@ -58,6 +58,7 @@ export const CONTROL_KEYS = [
 	{ id: 'names_record', label: 'SAVE NAMES' },
 	{ id: 'names_add_all', label: 'ALL NAMES' },
 	{ id: 'audit', label: 'LOG' },
+	{ id: 'fader_unity', label: 'UNITY' },
 ]
 export const SCOPE_KEYS = SCOPES.map((scope) => ({ id: `scope_${scope.id}`, label: scope.label }))
 

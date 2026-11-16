@@ -46,6 +46,18 @@ export function getActions(self) {
 				if (t && canCapture()) await e().captureToHold(t.section, t.index)
 			},
 		},
+		fader_unity: {
+			name: 'Fader to unity: last touched input, level kept by its trim',
+			description:
+				'Sets the fader of the last touched input to 0 dB and moves its digital trim the other way, with gate, ' +
+				'compressor and dynamic EQ thresholds following, and sends to the pre-fader auxes named in the settings. ' +
+				'The level in the mix does not change.',
+			options: [],
+			callback: async () => {
+				const t = e()?.lastTouched
+				if (t) await e().faderToUnity(t.section, t.index)
+			},
+		},
 		slot: {
 			name: 'Slot: store whatever is waiting, otherwise recall',
 			description:

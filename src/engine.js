@@ -96,6 +96,9 @@ export function normalizeLibrary(input) {
  * sent as it is (a script step or a saved name: what to send was decided when it was made).
  * kind is 'capture', 'script' or 'names' and only affects how the slot is shown.
  */
+// A fader-to-unity move is made in steps no larger than this, so the level never jumps
+const UNITY_STEP_DB = 0.5
+
 export class Engine {
 	/**
 	 * @param {object} cfg  ip, sendPort, recvPort, rate, queryTimeout, learn
@@ -106,6 +109,7 @@ export class Engine {
 			rate: 500,
 			queryTimeout: 400,
 			learn: false,
+			unityStepMs: 40, // pause between the steps of a fader-to-unity move
 			clearTimeout: 10000,
 			audit: false,
 			auditFolder: '',
@@ -134,6 +138,7 @@ export class Engine {
 		this.counts = {}
 		this.names = {}
 		this.consoleName = ''
+		this.unityNote = '' // what the last fader-to-unity did, for the key
 		this.absent = {} // section -> Map(suffix -> captures in a row it went unanswered)
 		this.current = new Map() // address -> { t, a }: the latest value the console has reported
 		this.online = false
@@ -742,6 +747,119 @@ export class Engine {
 			this.changed()
 		}
 		return n
+	}
+
+	// ---- fader to unity ----------------------------------------------------------------
+
+	/**
+	 * Put an input's fader at 0 dB and move its digital trim by the same amount the other
+	 * way, so the level it sends to the mix is unchanged and the fader is back where small
+	 * moves make small changes.
+	 *
+	 * Changing the trim changes the level into everything after it, so those follow:
+	 * - gate, compressor and dynamic EQ thresholds move with the trim, so they act on the
+	 *   signal as before;
+	 * - sends to the auxes listed as pre-fader in the settings move the other way, so
+	 *   monitor mixes are unchanged. Post-fader sends need nothing: the fader moved up by
+	 *   what the trim took off.
+	 * The analogue gain is not touched, so the preamp and anything sharing it are unaffected.
+	 *
+	 * The move is made gradually, in half-dB steps about 40 ms apart (a 12 dB move takes
+	 * about a second), because the console cannot change two settings at the same instant.
+	 *
+	 * If a setting would go past its range the move is shortened to what fits, and the
+	 * result says what stopped it. A threshold of a processor that is switched out does
+	 * not limit the move.
+	 * @returns {Promise<{ok: boolean, text: string, moved?: number, fader?: number, limitedBy?: string}>}
+	 */
+	async faderToUnity(section, index) {
+		const done = (ok, text, extra = {}) => {
+			this.unityNote = text
+			this.audit.event(`Fader to unity, ${describe(section, index, this.names[section]?.[index])}: ${text}`)
+			this.log(ok ? 'info' : 'warn', `Fader to unity, ${describe(section, index)}: ${text}`)
+			this.changed()
+			return { ok, text, ...extra }
+		}
+		if (section !== 'Input_Channels') return done(false, 'inputs only')
+		if (this.unityBusy) return { ok: false, text: 'busy' } // one at a time; the first is still moving
+		const base = `/${section}/${index}/`
+		// [suffix, the switch that says whether its processor is in]
+		const thresholds = [
+			['Dynamics/gate_thresh', 'Dynamics/gate_in'],
+			...[1, 2, 3].map((n) => [`Dynamics/comp_thresh_${n}`, 'Dynamics/comp_in']),
+			...[1, 2, 3, 4].map((n) => [`EQ/eq_thresh_${n}`, `EQ/dynamic_eq_on_${n}`]),
+		]
+		const pre = (this.cfg.preFaderAuxes ?? []).filter((n) => n <= this.count('Aux_Outputs'))
+		const sends = pre.map((n) => [`Aux_Send/${n}/send_level`, `Aux_Send/${n}/send_on`])
+		const wanted = ['fader', 'Channel_Input/trim', ...thresholds.flat(), ...sends.flat()]
+		const got = await this.queryMany([...new Set(wanted)].map((suffix) => base + suffix))
+		const value = (suffix) => got.get(base + suffix)?.a[0]
+		const fader = value('fader')
+		const trim = value('Channel_Input/trim')
+		if (typeof fader !== 'number' || typeof trim !== 'number') return done(false, 'no answer')
+		if (fader < -60) return done(false, 'fader is down')
+		if (Math.abs(fader) < 0.05) return done(true, 'already at 0 dB', { moved: 0, fader })
+
+		// The trim changes by the fader's present level. Shorten the move to what every
+		// setting that has to follow can manage.
+		let delta = fader
+		let limitedBy = ''
+		const limit = (name, now, change, min, max) => {
+			const room = change < 0 ? now - min : max - now // how far this one can go, as a positive number
+			if (Math.abs(delta) > room + 1e-6) {
+				delta = Math.sign(delta) * Math.max(0, room)
+				limitedBy = name
+			}
+		}
+		limit('trim', trim, delta, -40, 60)
+		const following = [] // [suffix, new value]
+		for (const [suffix, sw] of thresholds) {
+			const now = value(suffix)
+			if (typeof now !== 'number') continue
+			if ((value(sw) ?? 0) >= 0.5) limit(suffix.split('/')[1].replace(/_/g, ' '), now, delta, -60, 0)
+			following.push([suffix, now, +1, -60, 0])
+		}
+		for (const [suffix, sw] of sends) {
+			const now = value(suffix)
+			if (typeof now !== 'number' || now <= -90 || (value(sw) ?? 0) < 0.5) continue // off or down: leave it
+			limit(`aux ${suffix.split('/')[1]} send`, now, -delta, -150, 10)
+			following.push([suffix, now, -1, -150, 10])
+		}
+		if (Math.abs(delta) < 0.05)
+			return done(false, `cannot move: ${limitedBy} is at its limit`, { moved: 0, fader, limitedBy })
+
+		// The console takes one value at a time, so trim and fader cannot change together.
+		// Moving in small steps keeps the level within one step of where it should be all
+		// the way: half a dB at most, instead of a jump of the whole amount.
+		const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
+		const moving = [['Channel_Input/trim', trim, +1, -40, 60], ['fader', fader, -1, -150, 10], ...following]
+		// Within a step, whatever makes things quieter goes first
+		const quieter = ([suffix, , sign]) => sign * delta < 0 && !/thresh/.test(suffix)
+		moving.sort((x, y) => Number(quieter(y)) - Number(quieter(x)))
+		const steps = Math.max(1, Math.ceil(Math.abs(delta) / UNITY_STEP_DB))
+		this.unityBusy = true
+		try {
+			for (let k = 1; k <= steps; k++) {
+				const part = (delta * k) / steps
+				const values = {}
+				for (const [suffix, now, sign, min, max] of moving) {
+					values[suffix] = { t: got.get(base + suffix).t, a: [Math.fround(clamp(now + sign * part, min, max))] }
+				}
+				this.sendValues(section, index, values, null)
+				await this.transport?.drained()
+				if (k < steps) await new Promise((resolve) => setTimeout(resolve, this.cfg.unityStepMs))
+				if (!this.transport) break // the module was stopped part way
+			}
+		} finally {
+			this.unityBusy = false
+		}
+		const round = (n) => Math.round(n * 10) / 10
+		const left = round(fader - delta)
+		const text =
+			`trim ${delta > 0 ? '+' : ''}${round(delta)} dB, fader ${left === 0 ? 'at 0 dB' : `at ${left} dB`}` +
+			(limitedBy ? ` (stopped by ${limitedBy})` : '') +
+			(pre.length ? '' : '; aux sends not adjusted')
+		return done(true, text, { moved: delta, fader: fader - delta, limitedBy })
 	}
 
 	/** What is waiting to be stored by the next slot press: { kind, steps }, 'busy', or null. */

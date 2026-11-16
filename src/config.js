@@ -8,6 +8,7 @@ export const DEFAULTS = {
 	queryTimeout: 400,
 	slotCount: 32,
 	learn: false,
+	preFaderAuxes: '',
 	ipadEnabled: false,
 	ipadHost: '192.168.1.20',
 	ipadSendPort: 9000,
@@ -133,6 +134,15 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 		},
 		{
 			type: 'textinput',
+			id: 'preFaderAuxes',
+			label:
+				'Pre-fader auxes, for the UNITY key (for example 1-6, 9). Sends to these are raised or lowered to keep ' +
+				'monitor mixes the same when UNITY changes a channel’s trim. The console does not report which sends are pre-fader.',
+			width: 12,
+			default: DEFAULTS.preFaderAuxes,
+		},
+		{
+			type: 'textinput',
 			id: 'libraryFile',
 			label: 'Also keep the library in this file (optional, full path to a .json file)',
 			width: 12,
@@ -175,4 +185,17 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 /** 1..count as an array, for slot numbering. */
 export function ids(count) {
 	return Array.from({ length: Math.max(1, Number(count) || 1) }, (_, i) => i + 1)
+}
+
+/** "1-6, 9" as [1, 2, 3, 4, 5, 6, 9]. Anything that is not a number or a range is ignored. */
+export function parseNumberList(text) {
+	const out = new Set()
+	for (const part of String(text ?? '').split(/[,;\s]+/)) {
+		const m = /^(\d{1,3})(?:-(\d{1,3}))?$/.exec(part)
+		if (!m) continue
+		const from = Number(m[1])
+		const to = Number(m[2] ?? m[1])
+		for (let n = Math.min(from, to); n <= Math.max(from, to) && out.size < 200; n++) if (n >= 1) out.add(n)
+	}
+	return [...out].sort((a, b) => a - b)
 }

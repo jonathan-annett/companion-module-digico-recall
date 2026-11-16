@@ -85,6 +85,13 @@ its contents, and the text of the last one recalled turns yellow.
     matched before, they match after; if they differed, they still differ by as much.
     To make both sides identical, un-gang them, recall to each, and gang them again.
 - **CANCEL**: stops whatever is being built.
+- **UNITY**: for the last touched input, puts the fader at 0 dB and moves the channel's
+  trim the other way, so the level in the mix stays the same and the fader is back where
+  it is easy to ride. Thresholds (gate, compressor, dynamic EQ) follow the trim. Sends to
+  the auxes you name as pre-fader in the settings are adjusted to keep monitor mixes the
+  same; the console does not say which sends are pre-fader, so name them. It moves
+  gradually, about a second for 12 dB. If something runs out of range it stops there and
+  the small result key says why. Inputs only.
 
 **Recall scope**
 

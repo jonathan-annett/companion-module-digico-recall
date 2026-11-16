@@ -12,6 +12,7 @@ import { Engine } from '../src/engine.js'
 import { makeInstanceClass } from '../src/instance.js'
 import { encode, decode } from '../src/osc.js'
 import { captureSuffixes, scopeOf, parseAddress, SCOPE_IDS, SECTION_IDS } from '../src/params.js'
+import { parseNumberList } from '../src/config.js'
 import { localAddressFor, consoleSetup } from '../src/network.js'
 import { getConfigFields } from '../src/config.js'
 import { cleanSlot, cleanLibrary, cleanNames, namesToSteps } from '../src/validate.js'
@@ -88,6 +89,165 @@ test('console families: addresses a console lacks are left out, then no longer a
 	big.sim.surface('/Input_Channels/1/mute', 'f', [1])
 	await until(() => big.engine.online, 'back online')
 	assert.deepEqual(big.engine.absent, {})
+})
+
+// A realistic input for the fader-to-unity tests: fader low, compressor in, gate out
+function strip(sim, n, over = {}) {
+	const base = `/Input_Channels/${n}/`
+	const set = {
+		fader: -12,
+		'Channel_Input/trim': 3,
+		'Channel_Input/analog_gain': 30,
+		'Dynamics/gate_thresh': -50,
+		'Dynamics/gate_in': 0,
+		'Dynamics/comp_in': 1,
+		'Dynamics/comp_thresh_1': -20,
+		'Dynamics/comp_thresh_2': -18,
+		'Dynamics/comp_thresh_3': -16,
+		...Object.fromEntries(
+			[1, 2, 3, 4].flatMap((b) => [
+				[`EQ/eq_thresh_${b}`, -30],
+				[`EQ/dynamic_eq_on_${b}`, 0],
+			]),
+		),
+		'Aux_Send/1/send_level': -6,
+		'Aux_Send/1/send_on': 1,
+		'Aux_Send/2/send_level': -10,
+		'Aux_Send/2/send_on': 1,
+		'Aux_Send/3/send_level': -120, // down: left alone
+		'Aux_Send/3/send_on': 1,
+		'Aux_Send/4/send_level': -3, // not listed as pre-fader: left alone
+		'Aux_Send/4/send_on': 1,
+		...over,
+	}
+	for (const [suffix, v] of Object.entries(set)) sim.values.set(base + suffix, { t: 'f', a: [v] })
+	return (suffix) => sim.get(base + suffix)
+}
+const settle = async (engine) => {
+	await engine.transport.drained()
+	await sleep(60)
+}
+
+test('fader to unity: the fader goes to 0 dB, the trim takes up the difference, thresholds and pre-fader sends follow', async (t) => {
+	const { sim, engine } = await rig(t, { preFaderAuxes: [1, 2, 3], unityStepMs: 5 })
+	const get = strip(sim, 5)
+	sim.received.length = 0
+	const result = await engine.faderToUnity('Input_Channels', 5)
+	await settle(engine)
+	assert.deepEqual([result.ok, result.moved, result.fader], [true, -12, 0])
+	assert.equal(result.text, 'trim -12 dB, fader at 0 dB')
+	assert.equal(get('fader'), 0)
+	assert.equal(get('Channel_Input/trim'), -9, 'trim down by what the fader came up: same level in the mix')
+	assert.equal(get('Channel_Input/analog_gain'), 30, 'the preamp is not touched')
+	// Thresholds move with the trim, so the processors act on the signal as before
+	assert.deepEqual(
+		[1, 2, 3].map((n) => get(`Dynamics/comp_thresh_${n}`)),
+		[-32, -30, -28],
+	)
+	assert.equal(
+		get('Dynamics/gate_thresh'),
+		-60,
+		'a switched-out gate follows as far as it can and does not stop the move',
+	)
+	assert.equal(get('EQ/eq_thresh_2'), -42)
+	// Pre-fader sends come up by what the trim took off; the others are left alone
+	assert.deepEqual(
+		[1, 2, 3, 4].map((n) => get(`Aux_Send/${n}/send_level`)),
+		[6, 2, -120, -3],
+	)
+	// Quieter first: the trim is written before the fader comes up
+	const order = sim.received.map((m) => m.path.replace('/Input_Channels/5/', ''))
+	assert.ok(order.indexOf('Channel_Input/trim') < order.indexOf('fader'))
+	assert.ok(order.indexOf('Channel_Input/trim') < order.indexOf('Aux_Send/1/send_level'))
+	// A smooth move, not a jump: 24 half-dB steps, and at no moment is the level in the mix
+	// (trim plus fader) or in a monitor (trim plus send) more than half a dB from where it began
+	assert.equal(order.filter((suffix) => suffix === 'fader').length, 24)
+	const now = { 'Channel_Input/trim': 3, fader: -12, 'Aux_Send/1/send_level': -6 }
+	let worst = 0
+	for (const m of sim.received) {
+		const suffix = m.path.replace('/Input_Channels/5/', '')
+		if (!(suffix in now)) continue
+		assert.ok(Math.abs(m.args[0] - now[suffix]) <= 0.5 + 1e-6, `${suffix} moved more than half a dB in one step`)
+		now[suffix] = m.args[0]
+		worst = Math.max(
+			worst,
+			Math.abs(now['Channel_Input/trim'] + now.fader + 9),
+			Math.abs(now['Channel_Input/trim'] + now['Aux_Send/1/send_level'] + 3),
+		)
+	}
+	assert.ok(worst <= 0.5 + 1e-6 && worst > 0, `level strayed ${worst} dB`)
+	assert.equal(engine.unityNote, result.text)
+	// The console echoing these is not the operator touching the channel
+	assert.equal(engine.lastTouched, null)
+
+	// Pressed again: nothing to do
+	sim.received.length = 0
+	assert.equal((await engine.faderToUnity('Input_Channels', 5)).text, 'already at 0 dB')
+	assert.equal(sim.received.length, 0)
+})
+
+test('fader to unity: a fader above 0 dB comes down and the trim goes up, loudest change last', async (t) => {
+	const { sim, engine } = await rig(t, { preFaderAuxes: [1], unityStepMs: 5 })
+	const get = strip(sim, 6, { fader: 6, 'Dynamics/comp_thresh_1': -20 })
+	sim.received.length = 0
+	const result = await engine.faderToUnity('Input_Channels', 6)
+	await settle(engine)
+	assert.equal(result.text, 'trim +6 dB, fader at 0 dB')
+	assert.deepEqual(
+		[get('fader'), get('Channel_Input/trim'), get('Dynamics/comp_thresh_1'), get('Aux_Send/1/send_level')],
+		[0, 9, -14, -12],
+	)
+	const order = sim.received.map((m) => m.path.replace('/Input_Channels/6/', ''))
+	assert.ok(
+		order.indexOf('fader') < order.indexOf('Channel_Input/trim'),
+		'the fader comes down before the trim goes up',
+	)
+})
+
+test('fader to unity: stops short when a setting runs out of range, and says which', async (t) => {
+	const { sim, engine } = await rig(t, { preFaderAuxes: [1, 2], unityStepMs: 2 })
+	// The compressor is in and its threshold can only go 5 dB lower
+	let get = strip(sim, 7, { 'Dynamics/comp_thresh_3': -55 })
+	let result = await engine.faderToUnity('Input_Channels', 7)
+	await settle(engine)
+	assert.deepEqual([result.moved, result.limitedBy], [-5, 'comp thresh 3'])
+	assert.equal(result.text, 'trim -5 dB, fader at -7 dB (stopped by comp thresh 3)')
+	assert.deepEqual(
+		[get('fader'), get('Channel_Input/trim'), get('Dynamics/comp_thresh_3'), get('Aux_Send/1/send_level')],
+		[-7, -2, -60, -1],
+	)
+
+	// A pre-fader send that would have to go above +10 dB
+	get = strip(sim, 8, { 'Aux_Send/2/send_level': 7 })
+	result = await engine.faderToUnity('Input_Channels', 8)
+	await settle(engine)
+	assert.deepEqual([result.moved, result.limitedBy], [-3, 'aux 2 send'])
+	assert.deepEqual([get('fader'), get('Aux_Send/2/send_level')], [-9, 10])
+
+	// The trim itself at the end of its travel: nothing can move, and nothing is sent
+	get = strip(sim, 9, { 'Channel_Input/trim': -40 })
+	sim.received.length = 0
+	result = await engine.faderToUnity('Input_Channels', 9)
+	assert.deepEqual([result.ok, result.text], [false, 'cannot move: trim is at its limit'])
+	assert.equal(sim.received.length, 0)
+})
+
+test('fader to unity: refuses what it should not touch, and says when sends were not adjusted', async (t) => {
+	const { sim, engine } = await rig(t, { unityStepMs: 2 }) // no pre-fader auxes named
+	const get = strip(sim, 3)
+	const result = await engine.faderToUnity('Input_Channels', 3)
+	await settle(engine)
+	assert.equal(result.text, 'trim -12 dB, fader at 0 dB; aux sends not adjusted')
+	assert.equal(get('Aux_Send/1/send_level'), -6)
+
+	strip(sim, 4, { fader: -150 })
+	sim.received.length = 0
+	assert.equal((await engine.faderToUnity('Input_Channels', 4)).text, 'fader is down')
+	assert.equal((await engine.faderToUnity('Group_Outputs', 1)).text, 'inputs only')
+	assert.equal((await engine.faderToUnity('Input_Channels', 99)).text, 'no answer')
+	assert.equal(sim.received.length, 0)
+	assert.deepEqual(parseNumberList('1-6, 9;12  x 3-2 0 '), [1, 2, 3, 4, 5, 6, 9, 12])
+	assert.deepEqual(parseNumberList(''), [])
 })
 
 test('parameter table: every address has a recall scope, and the dangerous ones are absent', () => {

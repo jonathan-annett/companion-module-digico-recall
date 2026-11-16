@@ -41,7 +41,7 @@ test('every deck size, and a tablet, has a layout that fits and leaves slots', (
 		mk2: [8, 4], // 5 × 3 with page keys: eight slots and the four capture keys
 		plus: [4, 4],
 		mini: [3, 3],
-		tablet: [32, 19], // every key, and all 32 slots with room to spare
+		tablet: [32, 20], // every key, and all 32 slots with room to spare
 	}
 	assert.deepEqual(
 		DECKS.map((deck) => deck.id),
@@ -90,7 +90,7 @@ test('a second page: scope keys only, or more slots starting where the first pag
 
 test('choices are checked: too many keys is refused with a reason, odd values are tidied', () => {
 	const all = [...CONTROL_KEYS, ...SCOPE_KEYS].map((k) => k.id)
-	assert.throws(() => planLayout({ columns: 3, rows: 2, nav: false, keys: all }), /19 keys do not fit on 3 × 2/)
+	assert.throws(() => planLayout({ columns: 3, rows: 2, nav: false, keys: all }), /20 keys do not fit on 3 × 2/)
 	const tidy = planLayout({
 		columns: 'x',
 		rows: 99,

@@ -6,6 +6,7 @@ export function getVariableDefinitions(config) {
 		state: { name: 'What the module is waiting for' },
 		console: { name: 'Console name' },
 		touched: { name: 'Last touched channel' },
+		unity: { name: 'What the last fader-to-unity did' },
 		held: { name: 'Capture waiting to be stored' },
 		waiting: { name: 'What the next slot press will store: CAPTURE, SCRIPT, NAMES or nothing' },
 		scopes: { name: 'Active recall scopes' },
@@ -26,6 +27,7 @@ export function getVariableValues(engine, config) {
 		state: status.state,
 		console: engine.consoleName,
 		touched: status.touchedLabel,
+		unity: engine.unityNote,
 		held: status.held,
 		waiting: status.waiting.toUpperCase(),
 		scopes: SCOPES.filter((s) => engine.scopes.has(s.id))

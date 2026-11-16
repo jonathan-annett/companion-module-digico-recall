@@ -55,6 +55,11 @@ export function getPresets(label, config) {
 		[fb('state', { state: 'busy' }, amber)],
 	)
 	button('cancel', 'Capture', 'Cancel', 'CANCEL', [act('cancel')])
+	// The last touched input: fader to 0 dB, trim the other way, so the level stays and the fader is usable
+	button('fader_unity', 'Level', 'Fader to unity, level kept (last touched input)', `UNITY\\n${v('touched')}`, [
+		act('fader_unity'),
+	])
+	button('fader_unity_result', 'Level', 'What the last fader to unity did', v('unity'), [], [], '7')
 	button(
 		'target',
 		'Capture',

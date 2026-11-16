@@ -4,7 +4,7 @@ import { Engine, normalizeLibrary } from './engine.js'
 import { decode } from './osc.js'
 import { parseAddress } from './params.js'
 import { cleanLibrary } from './validate.js'
-import { DEFAULTS, getConfigFields } from './config.js'
+import { DEFAULTS, getConfigFields, parseNumberList } from './config.js'
 import { getActions } from './actions.js'
 import { getFeedbacks } from './feedbacks.js'
 import { getVariableDefinitions, getVariableValues } from './variables.js'
@@ -75,6 +75,7 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 					rate: Number(c.rate) || DEFAULTS.rate,
 					queryTimeout: Number(c.queryTimeout) || DEFAULTS.queryTimeout,
 					learn: !!c.learn,
+					preFaderAuxes: parseNumberList(c.preFaderAuxes),
 					audit: !!c.audit,
 					auditFolder: String(c.auditFolder ?? ''),
 				},

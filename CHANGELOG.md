@@ -9,11 +9,29 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.8] - unreleased
+## [0.2.9] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.7 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.8 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.8:
+
+- **UNITY key: fader to 0 dB, level kept.** For the last touched input, the fader goes to
+  0 dB and the channel's digital trim moves the other way by the same amount, so the
+  level in the mix is unchanged and the fader is back where small moves make small
+  changes. Because the trim changes the level into the processing, the gate, compressor
+  and dynamic EQ thresholds move with it, and sends to the auxes named as pre-fader in
+  the settings are moved to keep monitor mixes as they were. The analogue gain is left
+  alone.
+- **The move is gradual.** The console cannot change two settings at once, so it is done
+  in half-dB steps about 40 ms apart, quietest change first within each step; the level
+  is never more than half a dB from where it started. A 12 dB move takes about a second.
+- If a setting would run out of range the move stops there and the key says what stopped
+  it. A threshold of a processor that is switched out does not limit the move.
+- New setting: pre-fader auxes (for example `1-6, 9`). The console does not report which
+  sends are pre-fader. With none named, sends are not adjusted and the key says so.
+- Inputs only for now.
 
 Since test build 0.2.7:
 

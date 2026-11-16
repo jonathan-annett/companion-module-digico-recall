@@ -354,3 +354,33 @@ console and network.
   step with a put-back are the console's doing, as with a recall.
 - Limit: a change the console makes without announcing it (if there is such a thing,
   a snapshot firing perhaps) would be missed until ⟳ is pressed. To be watched for.
+
+### 2026-11-17: fader to unity, 0.2.9
+
+- Prompted by a look at Mixing Station's Re-Gain (a gain change with thresholds, sends
+  and faders compensated). The maintainer's own habit is the reverse: bring the fader to
+  about 0 dB, where it has resolution, and take up the difference in gain. He asked for
+  one key that does it.
+- Which gain: the digital trim, not the analogue gain. The preamp level, the converter
+  and anything else fed from that preamp are untouched, and the trim is in dB with a
+  wide range (-40 to +60 in the command sets).
+- What must follow the trim: everything level-dependent after it. Thresholds of the
+  gate, the compressor bands and the dynamic EQ bands move the same way. Pre-fader sends
+  move the opposite way. Post-fader sends need nothing.
+- Pre or post cannot be read: the command sets give no pre/post setting for an input's
+  aux sends. So the pre-fader auxes are a setting. This is the weak point: a wrong list
+  changes a monitor mix. With an empty list the key still works and says sends were not
+  adjusted.
+- The maintainer pointed out that since changes cannot be atomic the move should be
+  smooth. It is made in steps of at most 0.5 dB, 40 ms apart, each step writing the
+  quieter-making changes first. The worst momentary error is one step. A test follows
+  every write and checks that trim plus fader, and trim plus send, never stray more than
+  half a dB.
+- Limits: the move is shortened to what the trim, any switched-in threshold and any
+  pre-fader send can manage. Switched-out processors follow as far as they can without
+  limiting it.
+- Not known until tried with audio: whether 0.5 dB steps at 40 ms are inaudible, how
+  quickly the console applies each write, and whether the console smooths fader and
+  trim changes differently (which would matter more than the step size).
+- Still open from the Re-Gain discussion: plus and minus keys that change the analogue
+  gain with the trim compensating.
