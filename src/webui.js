@@ -49,6 +49,12 @@ main { flex: 1; min-height: 0; display: flex; }
 .detail { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px 60px; }
 .detail h2 { margin: 0 0 4px; font-size: 18px; }
 .sub { color: var(--dim); margin: 0 0 16px; font-size: 13px; }
+.pick { margin-right: 10px; white-space: nowrap; }
+.deck { display: grid; gap: 6px; margin: 6px 0 14px; }
+.deck .key { height: 64px; border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font: 600 11px var(--sans, sans-serif); background: #282828; color: #fff; padding: 2px; }
+.deck .key.slot { background: #1d3b2a; }
+.deck .key.nav { background: #111; color: var(--dim); }
+.deck .key.empty { background: transparent; border: 1px dashed var(--line, #444); }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
 label.f { display: inline-flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
 input, select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font: inherit; }
@@ -123,7 +129,7 @@ table.log .was { color: var(--dim); }
 	var base = location.pathname.replace(/\/?$/, '/')
 	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null }, draft: null, dirty: false,
 		names: { section: 'Input_Channels', live: {}, edit: {}, slotId: '' } }
-	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['log', 'Log'], ['library', 'Library'], ['setup', 'Setup']]
+	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['log', 'Log'], ['library', 'Library'], ['buttons', 'Buttons'], ['setup', 'Setup']]
 
 	function h(tag, attrs) {
 		var el = document.createElement(tag)
@@ -523,6 +529,76 @@ table.log .was { color: var(--dim); }
 			}))
 	}
 
+	// ---- buttons -------------------------------------------------------------------
+
+	// A page of buttons to import into Companion: choose the size and the keys, see where
+	// they land, download the file.
+	var BTN = { opts: null, plan: null, file: null, filename: '', error: '', busy: false }
+	function planButtons() {
+		BTN.busy = true
+		return api('api/layout', BTN.opts).then(function (r) {
+			BTN.plan = r.plan; BTN.file = r.file; BTN.filename = r.filename; BTN.error = ''
+		}, function (e) { BTN.plan = null; BTN.file = null; BTN.error = e.message })
+			.then(function () { BTN.busy = false; if (S.tab === 'buttons') render() })
+	}
+	function viewButtons() {
+		var L = S.status.layout
+		if (!BTN.opts) {
+			BTN.opts = clone(L.defaults)
+			planButtons()
+		}
+		var o = BTN.opts
+		var set = function (k, v) { o[k] = v; planButtons() }
+		var deck = L.decks.filter(function (d) { return d.columns === o.columns && d.rows === o.rows })[0]
+		var size = h('select', { onchange: function (e) {
+			var d = L.decks.filter(function (x) { return x.id === e.target.value })[0]
+			// each deck size comes with a set of keys that suits it
+			if (d) { BTN.custom = false; o.columns = d.columns; o.rows = d.rows; o.nav = d.nav; o.keys = d.keys === 'all' ? L.controls.concat(L.scopes).map(function (k) { return k.id }) : d.keys.slice(); planButtons() } else { BTN.custom = true; render() }
+		} }, L.decks.map(function (d) { return h('option', { value: d.id, selected: !BTN.custom && deck && deck.id === d.id }, d.label) }),
+			h('option', { value: 'custom', selected: BTN.custom || !deck }, 'Other size'))
+		var num = function (k, min, max) {
+			return h('input', { type: 'number', min: min, max: max, value: o[k], style: 'width:70px', onchange: function (e) { set(k, Number(e.target.value)) } })
+		}
+		var tick = function (key) {
+			var on = o.keys.indexOf(key.id) >= 0
+			return h('label', { class: 'pick' }, h('input', { type: 'checkbox', checked: on, onchange: function (e) {
+				o.keys = o.keys.filter(function (k) { return k !== key.id })
+				if (e.target.checked) o.keys.push(key.id)
+				planButtons()
+			} }), ' ' + key.label)
+		}
+		var preview = null
+		if (BTN.plan) {
+			preview = h('div', { class: 'deck', style: 'grid-template-columns: repeat(' + BTN.plan.columns + ', 64px)' },
+				[].concat.apply([], BTN.plan.grid.map(function (row) {
+					return row.map(function (cell) {
+						return h('div', { class: 'key ' + (cell ? cell.kind : 'empty') }, cell ? cell.label : '')
+					})
+				})))
+		}
+		var slots = BTN.plan ? BTN.plan.slots : []
+		return h('div', { class: 'detail' },
+			h('h2', {}, 'Buttons'),
+			h('p', { class: 'sub' }, 'Makes a page of buttons for this connection as a file to import into Companion.'),
+			h('div', { class: 'bar' }, 'Page size ', size,
+				BTN.custom || !deck ? h('span', {}, ' ', num('columns', 2, 20), ' across, ', num('rows', 1, 10), ' down') : null,
+				h('label', { class: 'pick' }, h('input', { type: 'checkbox', checked: o.nav, onchange: function (e) { set('nav', e.target.checked) } }), ' Page up / down keys'),
+				h('label', { class: 'pick' }, h('input', { type: 'checkbox', checked: o.slots !== false, onchange: function (e) { set('slots', e.target.checked) } }), ' Fill the rest with slots'),
+				o.slots !== false ? h('span', {}, ' starting at slot ', num('firstSlot', 1, S.status.slotCount)) : null),
+			h('div', { class: 'bar' }, h('b', {}, 'Keys '), L.controls.map(tick)),
+			h('div', { class: 'bar' }, h('b', {}, 'Recall scope '), L.scopes.map(tick)),
+			BTN.error ? h('p', { class: 'note', style: 'color:var(--bad)' }, BTN.error) : null,
+			preview,
+			BTN.plan ? h('p', { class: 'note' }, slots.length ? 'Slots ' + slots[0] + ' to ' + slots[slots.length - 1] + ' fit on this page. For more, make another page starting at slot ' + (slots[slots.length - 1] + 1) + '.' : (BTN.plan.withSlots ? 'No room is left for slots on this page.' : 'A page of keys only.')) : null,
+			h('div', { class: 'bar' },
+				h('button', { class: 'b go', disabled: !BTN.file, onclick: function () {
+					var blob = new Blob([JSON.stringify(BTN.file, null, '\t')], { type: 'application/json' })
+					var a = h('a', { href: URL.createObjectURL(blob), download: BTN.filename })
+					document.body.appendChild(a); a.click(); a.remove()
+				} }, 'Download page file')),
+			h('p', { class: 'note' }, 'In Companion: Import / Export, Import, choose the file, pick the page to put it on, and when asked about the connection choose this one ("' + S.status.label + '") rather than making a new one. The file holds buttons only: no console address and none of your captures. Any key can also be dragged from the Presets tab instead.'))
+	}
+
 	// ---- log -----------------------------------------------------------------------
 
 	// The audit trail: every change the console reports, and everything the module does.
@@ -736,7 +812,7 @@ table.log .was { color: var(--dim); }
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
 		if (!S.status || !S.lib) { add(main, h('div', { class: 'detail' }, h('div', { class: 'empty-state' }, 'Loading…'))); return }
-		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'log' ? viewLog() : S.tab === 'setup' ? viewSetup() : viewLibrary())
+		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'log' ? viewLog() : S.tab === 'setup' ? viewSetup() : S.tab === 'buttons' ? viewButtons() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
 		if (typingFilter && $('logfilter')) {

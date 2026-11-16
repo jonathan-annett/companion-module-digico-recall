@@ -283,6 +283,37 @@ await test('NAME scope carries a channel name with a preset', async () => {
 	await until(() => sim.get('/Input_Channels/2/Channel_Input/name') === 'In2', 'name restored')
 })
 
+await test('Buttons tab: the web API plans a page and returns a file to import, for this connection', async () => {
+	const status = (await http('GET', '/api/status')).data
+	assert.equal(status.label, 'recall')
+	assert.deepEqual(
+		status.layout.decks.map((d) => [d.columns, d.rows]),
+		[
+			[8, 4],
+			[5, 3],
+			[4, 2],
+			[3, 2],
+			[10, 6],
+		],
+	)
+	const made = (await http('POST', '/api/layout', status.layout.defaults)).data
+	assert.equal(made.filename, 'digico-recall-page-8x4.companionconfig')
+	assert.equal(made.plan.slots.length, Math.min(15, status.slotCount), 'as many slots as fit, up to the number set up')
+	assert.equal(made.file.type, 'page')
+	assert.equal(Object.values(made.file.instances)[0].label, 'recall')
+	assert.ok(!JSON.stringify(made.file).includes('In5'), 'stored captures are not in the file')
+	const small = (await http('POST', '/api/layout', { columns: 3, rows: 2, nav: false, keys: ['arm', 'target'] })).data
+	assert.deepEqual(small.plan.slots, [1, 2, 3, 4])
+	const refused = await http('POST', '/api/layout', {
+		columns: 2,
+		rows: 1,
+		nav: false,
+		keys: ['arm', 'target', 'cancel'],
+	})
+	assert.equal(refused.status, 400)
+	assert.match(refused.data.error, /do not fit/)
+})
+
 await test('web page and API: browse, edit a value, rename, send, names, import', async () => {
 	const page = await http('GET', '/')
 	assert.equal(page.status, 200)

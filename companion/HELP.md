@@ -146,6 +146,10 @@ Or open `http://<companion address>:<port>/instance/<this connection's label>/`
   changed. Load names from a slot, or save the grid to one.
 - **Log**: the audit trail, live. See Log above.
 - **Library**: download everything as one file, or replace it from a file.
+- **Buttons**: makes a whole page of buttons for this connection. Choose your deck (Stream
+  Deck XL, MK.2, +, Mini, a tablet, or any size), tick the keys you want, check the
+  preview and download the file. In Companion use Import / Export, Import, and link the
+  page to this connection. The file contains buttons only.
 
 ## What is not captured
 

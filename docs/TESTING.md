@@ -37,12 +37,13 @@ Each test's title says what it proves. The lists below are generated from the te
 | 9   | record a script from several recalls, store it in a slot, run it from that slot                |
 | 10  | save names with the buttons, store them in a slot, restore from that slot                      |
 | 11  | NAME scope carries a channel name with a preset                                                |
-| 12  | web page and API: browse, edit a value, rename, send, names, import                            |
-| 13  | web setup: resolve shows what to enter on the console; apply saves the address and reconnects  |
-| 14  | audit log: the LOG button switches it on, the web page reads new entries, and clear empties it |
-| 15  | meter capture: started from the button or the web page, result downloadable from the web page  |
-| 16  | library survives a restart and a config edit                                                   |
-| 17  | a silent console produces a warning, not a stored empty capture                                |
+| 12  | Buttons tab: the web API plans a page and returns a file to import, for this connection        |
+| 13  | web page and API: browse, edit a value, rename, send, names, import                            |
+| 14  | web setup: resolve shows what to enter on the console; apply saves the address and reconnects  |
+| 15  | audit log: the LOG button switches it on, the web page reads new entries, and clear empties it |
+| 16  | meter capture: started from the button or the web page, result downloadable from the web page  |
+| 17  | library survives a restart and a config edit                                                   |
+| 18  | a silent console produces a warning, not a stored empty capture                                |
 
 ### test/behaviour.test.mjs: edge cases and safety, each on its own console
 
@@ -88,6 +89,19 @@ Each test's title says what it proves. The lists below are generated from the te
 | 38  | connection status follows the console: connecting, ok, then failure when it goes away                          |
 | 39  | library file: written on every change and read back on start                                                   |
 | 40  | iPad relay: datagrams pass both ways, and a value written from the iPad counts as a touch                      |
+
+### test/layout.test.mjs: the Buttons tab's page file
+
+| #   | Test                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------ |
+| 1   | Stream Deck XL: navigation on the left, keys along the bottom then up the right, slots everywhere else |
+| 2   | every deck size, and a tablet, has a layout that fits and leaves slots                                 |
+| 3   | a second page: scope keys only, or more slots starting where the first page stopped                    |
+| 4   | choices are checked: too many keys is refused with a reason, odd values are tidied                     |
+| 5   | the file is a Companion page export built from the presets: every action and feedback exists           |
+| 6   | buttons carry what the presets carry: texts, sizes, colours, and the two-second hold on CAPTURE        |
+| 7   | nothing of the user’s goes into the file: no library, no console address                               |
+| 8   | version.js matches package.json                                                                        |
 
 ### test/sdk.test.mjs: against the Companion SDK and the console's command set
 
@@ -159,6 +173,8 @@ node tools/probe.mjs <console-ip> 8001 8000 Graphic_EQ 1
 | M28  | Gang two graphic EQs that have different curves. With LOG on, move one band; check the GRAB button shows both ("GEQ 9+10"). Capture a third graphic to a slot, set TO to touched, light GEQ, touch one side of the pair, press the slot. Compare both graphics with the captured one | The touched side has the captured curve exactly. The other side has moved by the same amounts, so it differs from the touched side exactly as it did before. The log entry for the recall says the other side was left to follow, and GRAB still shows the side you touched |
 | M29  | Un-gang the pair and move one of them a few times                                                                                                                                                                                                                                    | The GRAB button goes back to a single graphic; the log shows "No longer ganged"                                                                                                                                                                                             |
 | M30  | Repeat M28's first step with a stereo input and a stereo bus (fader, then an EQ band)                                                                                                                                                                                                | Note whether they appear as a pair, as one channel, or not at all                                                                                                                                                                                                           |
+| M31  | Web page, Buttons tab: choose your deck, download the page file. In Companion: Import / Export, Import, choose the file, put it on an empty page, link it to the existing recall connection                                                                                          | Companion accepts the file. The page shows the keys where the preview put them, with live texts (slot contents, CAPTURE state). Each key works, including holding CAPTURE for two seconds. Note anything Companion complains about, and the Companion version               |
+| M32  | Repeat M31 with the connection renamed to something other than "recall" before downloading                                                                                                                                                                                           | Button texts still show their values                                                                                                                                                                                                                                        |
 
 ## 3. Test log
 
@@ -180,6 +196,8 @@ node tools/probe.mjs <console-ip> 8001 8000 Graphic_EQ 1
 | 2026-11-16 | 0.2.2 (test build) | M28 by the maintainer: recall to a ganged pair of graphic EQs with different curves, compared with the console's own presets                                                        | Quantum 338 offline software, Companion on a Mac                                                          | The side the recall is applied to takes the new values and the other side tracks it, keeping the difference between them. (A console preset, by contrast, leaves the other side alone.) Not the expected result written for M28, which assumed both sides could be set; M28 rewritten |
 | 2026-11-16 | 0.2.4 (test build) | Automated suite, 66 tests, with the simulated console now moving gang members together when one is written to; package build                                                        | Node 22.23.4, Linux                                                                                       | 66 passed, 0 failed; package built                                                                                                                                                                                                                                                    |
 | 2026-11-17 | 0.2.5 (test build) | Automated suite, 67 tests; package build                                                                                                                                            | Node 22.23.4, Linux, simulated console                                                                    | 67 passed, 0 failed; package built                                                                                                                                                                                                                                                    |
+| 2026-11-17 | 0.2.6 (test build) | Generated page compared, button by button and ignoring ids, with a page the maintainer exported from Companion 5.1.1 (built by dragging the 0.2.4 presets)                          | Maintainer's export, 29 buttons                                                                           | Every key other than the slots identical. Slots differ only in their feedbacks, which changed between 0.2.4 and now (colour by kind). Not yet imported into Companion                                                                                                                 |
+| 2026-11-17 | 0.2.6 (test build) | Automated suite, 76 tests; Buttons tab opened in headless Chrome: each deck size, download, too-many-keys message; package build                                                    | Node 22.23.4, Linux, Chrome, simulated console                                                            | 76 passed, 0 failed; no script errors; file downloaded and parsed; package built                                                                                                                                                                                                      |
 | 2026-11-16 | 0.2.0 (unreleased) | Setup tab: type a console address, check the row fills in, save the address                                                                                                         | Headless Chrome against `tools/preview.mjs`                                                               | Works; only the "no matching network card" case could be shown on the test machine                                                                                                                                                                                                    |
 | 2026-11-16 | 0.2.0 (unreleased) | Web page after the single-slot rework: open a script slot, relabel and save, load names from a slot; Log tab with simulated activity: live update, filter, switch off               | Headless Chrome against `tools/preview.mjs`                                                               | Works, no browser console errors                                                                                                                                                                                                                                                      |
 

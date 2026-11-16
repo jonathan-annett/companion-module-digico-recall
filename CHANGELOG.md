@@ -9,11 +9,21 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.5] - unreleased
+## [0.2.6] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.4 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.5 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.5:
+
+- **A ready-made page of buttons.** The web page has a new Buttons tab. Choose the deck
+  (Stream Deck XL 8 × 4, MK.2 5 × 3, + 4 × 2, Mini 3 × 2, a tablet or web-buttons grid,
+  or any size), tick the keys you want, see where they land, and download a page file to
+  import into Companion. Each size starts with a set of keys that suits it; a page can
+  also hold keys only, or more slots starting where another page stopped. The file is
+  made from the module's own presets, for this connection, and holds no console address
+  and none of your captures. Its layout follows a page exported from Companion 5.1.1.
 
 Since test build 0.2.4:
 

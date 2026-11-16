@@ -1,4 +1,6 @@
 import { SECTIONS, SECTION_IDS, SCOPES, SCOPE_IDS } from './params.js'
+import { buildPageExport, planLayout, CONTROL_KEYS, SCOPE_KEYS, DECKS, LAYOUT_DEFAULTS } from './layout.js'
+import { VERSION } from './version.js'
 import { KINDS } from './engine.js'
 import { cleanSlot, cleanNames, cleanLibrary, namesToSteps } from './validate.js'
 import { PAGE } from './webui.js'
@@ -35,6 +37,8 @@ export async function handleHttp(self, request) {
 				kinds: KINDS,
 				setup: consoleSetup(self.config),
 				slotCount: Number(self.config.slotCount),
+				label: String(self.label || 'recall'),
+				layout: { decks: DECKS, controls: CONTROL_KEYS, scopes: SCOPE_KEYS, defaults: LAYOUT_DEFAULTS },
 			})
 		}
 		if (method === 'GET' && path === '/api/lib') return json(engine.lib)
@@ -73,6 +77,16 @@ export async function handleHttp(self, request) {
 			return json({ ok: true })
 		}
 
+		if (path === '/api/layout') {
+			// A page of buttons for this connection, as a file Companion can import
+			const plan = planLayout(body, Number(self.config.slotCount))
+			const label = String(self.label || 'recall')
+			return json({
+				plan,
+				filename: `digico-recall-page-${plan.columns}x${plan.rows}.companionconfig`,
+				file: buildPageExport(plan, { label, version: VERSION, config: self.config }),
+			})
+		}
 		switch (path) {
 			case '/api/setup/resolve':
 				// What to enter on the console if its address were this one. Changes nothing.

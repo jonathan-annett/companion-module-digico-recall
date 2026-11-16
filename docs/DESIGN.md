@@ -289,3 +289,27 @@ console and network.
 - Both start lit, so a fresh connection recalls a graphic as before. A page built from
   the earlier presets has no GEQ key; without one, GEQ simply stays lit.
 - Recorded scripts are unaffected: they store the values to send, not scope names.
+
+### 2026-11-17: a page of buttons from the web page, 0.2.6
+
+- Companion gives a module presets to drag, one at a time, and no way to lay out a page.
+  The maintainer exported the page he had built so one could be shipped, then suggested
+  generating it from the web page instead, and listed the form factors: Stream Deck XL
+  (8 × 4), MK.2 (5 × 3), Mini (3 × 2), and tablets or the web emulator at any size.
+- `src/layout.js` plans the page and writes it in Companion's page export format, taking
+  every button from `getPresets`, so the file and the presets cannot disagree. The format
+  was taken from the maintainer's export (Companion 5.1.1, export version 12,
+  "button-layered" controls): a preset's text size 14 is stored as 29.4 and "auto" as 100
+  with shrinking; a feedback's style becomes overrides on the text and background layers;
+  the hold on CAPTURE is an action set named for its delay, listed in `runWhileHeld`.
+- Layout rule, which reproduces the maintainer's own arrangement on the XL: page keys in
+  the left column, chosen keys along the bottom row and then up the right-hand side,
+  slots in every remaining cell. One rule for every size rather than a hand-made layout
+  each. Each deck size has its own starting set of keys; small decks get capture keys and
+  slots, with scope keys left for a second page.
+- Generated for the connection asking: its label goes into the variable names. The file
+  carries the connection with default settings only, so no address or library leaves.
+- Risk, stated in the test log: the format is known from one export of one Companion
+  version, and a generated file has not yet been imported. M31 and M32 cover that.
+- A settings-page button was considered. The settings page cannot offer a download, so
+  the generator lives on the web page, which the settings page already links to.
