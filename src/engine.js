@@ -50,7 +50,7 @@ export class Engine {
 	 * @param {object} hooks  onChange(), persist(lib), log(level, text), onStatus(ok, text), onRaw(buf)
 	 */
 	constructor(cfg, hooks = {}) {
-		this.cfg = { rate: 500, queryTimeout: 400, learn: false, ...cfg }
+		this.cfg = { rate: 500, queryTimeout: 400, learn: false, clearTimeout: 10000, ...cfg }
 		this.hooks = hooks
 		this.lib = emptyLibrary()
 		this.scopes = new Set(['eq'])
@@ -60,6 +60,8 @@ export class Engine {
 		this.held = [] // channels captured so far, waiting for a slot
 		this.scriptRec = null // null, or { steps: [] } while recording
 		this.scriptHeld = null // recorded steps waiting for a script button
+		this.clearMode = false // true after a long press on capture: the next slot pressed is cleared
+		this.clearTimer = null
 		this.namesRec = null // null, or { names: { section: { number: name } } } while collecting names
 		this.targetMode = 'original' // original | touched
 		this.lastTouched = null
@@ -100,6 +102,8 @@ export class Engine {
 	async stop() {
 		if (this.pollTimer) clearInterval(this.pollTimer)
 		this.pollTimer = null
+		if (this.clearTimer) clearTimeout(this.clearTimer)
+		this.clearTimer = null
 		if (this.batch) this.batch.finish()
 		await this.transport?.close()
 		this.transport = null
@@ -310,13 +314,48 @@ export class Engine {
 
 	/** The "start recording" button. Pressing it again cancels. */
 	toggleArm() {
+		if (this.clearMode) return this.setClearMode(false)
 		if (this.namesRec) return // one kind of collecting at a time
 		this.armed = !this.armed
 		this.held = []
 		this.changed()
 	}
 
+	/**
+	 * Clear mode: the next slot, script or name-set button pressed is emptied instead of
+	 * used. Entered by holding the capture button. It drops whatever was being collected,
+	 * and switches itself off after a few seconds so a later press can't delete by surprise.
+	 */
+	setClearMode(on) {
+		if (this.clearTimer) clearTimeout(this.clearTimer)
+		this.clearTimer = null
+		if (on) {
+			this.armed = false
+			this.held = []
+			this.scriptRec = null
+			this.scriptHeld = null
+			this.namesRec = null
+			this.clearTimer = setTimeout(() => this.setClearMode(false), this.cfg.clearTimeout)
+		}
+		this.clearMode = !!on
+		this.changed()
+	}
+
+	/** In clear mode, empty one entry of the library and leave clear mode. */
+	clearPressed(bucket, id) {
+		const existed = !!this.lib[bucket][id]
+		delete this.lib[bucket][id]
+		if (bucket === 'slots' && this.lastRecalled === id) this.lastRecalled = null
+		this.setClearMode(false)
+		if (existed) {
+			this.log('info', `Cleared ${bucket === 'slots' ? 'slot' : bucket === 'scripts' ? 'script' : 'name set'} ${id}`)
+			this.persist()
+		}
+		return existed ? 'cleared' : 'empty'
+	}
+
 	cancel() {
+		if (this.clearMode) this.setClearMode(false)
 		this.armed = false
 		this.held = []
 		this.scriptRec = null
@@ -365,6 +404,7 @@ export class Engine {
 	 */
 	pressSlot(id) {
 		id = String(id)
+		if (this.clearMode) return this.clearPressed('slots', id)
 		if (this.mode === 'holding') {
 			this.lib.slots[id] = { label: '', when: new Date().toISOString(), channels: this.held }
 			this.held = []
@@ -447,7 +487,7 @@ export class Engine {
 		} else if (this.scriptRec) {
 			this.scriptHeld = this.scriptRec.steps.length ? this.scriptRec.steps : null
 			this.scriptRec = null
-		} else if (!this.namesRec) {
+		} else if (!this.namesRec && !this.clearMode) {
 			this.scriptRec = { steps: [] }
 		}
 		this.changed()
@@ -456,6 +496,7 @@ export class Engine {
 	/** A script button: store if a recording is waiting, otherwise run. */
 	pressScript(id) {
 		id = String(id)
+		if (this.clearMode) return this.clearPressed('scripts', id)
 		if (this.scriptHeld) {
 			this.lib.scripts[id] = { name: '', when: new Date().toISOString(), steps: this.scriptHeld }
 			this.scriptHeld = null
@@ -532,7 +573,8 @@ export class Engine {
 	 */
 	toggleNamesRecord() {
 		if (this.namesRec) this.namesRec = null
-		else if (this.mode === 'idle' && !this.scriptRec && !this.scriptHeld) this.namesRec = { names: {} }
+		else if (this.mode === 'idle' && !this.scriptRec && !this.scriptHeld && !this.clearMode)
+			this.namesRec = { names: {} }
 		this.changed()
 	}
 
@@ -561,6 +603,7 @@ export class Engine {
 	/** A name-set button: store the collected list if there is one, otherwise restore the set. */
 	pressNameSet(id, sections) {
 		id = String(id)
+		if (this.clearMode) return this.clearPressed('nameSets', id)
 		if (this.namesRec) {
 			const total = this.namesCount()
 			if (!total) return 'busy'
@@ -634,6 +677,7 @@ export class Engine {
 	}
 
 	stateLabel() {
+		if (this.clearMode) return 'PRESS SLOT TO CLEAR'
 		if (this.mode === 'armed') return 'TOUCH A CHANNEL'
 		if (this.mode === 'capturing') return 'READING'
 		if (this.mode === 'holding') return `${this.held.length} CH: PRESS SLOT`
@@ -649,6 +693,7 @@ export class Engine {
 			consoleName: this.consoleName,
 			counts: Object.fromEntries(SECTION_IDS.map((s) => [s, this.count(s)])),
 			mode: this.mode,
+			clearMode: this.clearMode,
 			state: this.stateLabel(),
 			scopes: SCOPE_IDS.filter((s) => this.scopes.has(s)),
 			targetMode: this.targetMode,

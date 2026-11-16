@@ -34,6 +34,10 @@ Nothing yet.
   A multi-channel capture always returns to its own channels, whatever the recall target
   is set to. The web page lists and edits each channel in a capture. Libraries saved by
   0.1.0 (one channel per slot) are read and converted automatically.
+- Clearing: hold CAPTURE for two seconds and the next slot, script or name set button
+  pressed is emptied. Clear mode ends after one press, after ten seconds, or when CAPTURE
+  or CANCEL is tapped. The rows of "CLEAR n" preset buttons are gone; the clear actions
+  remain for buttons made with 0.1.0.
 - Saving names now works like capturing a channel. Press SAVE NAMES, tap solo on each
   channel whose name you want, then press a name set button to store the list. The same
   button restores it later, writing back only the names in the list. ALL NAMES adds every

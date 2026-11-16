@@ -40,6 +40,10 @@ Everything is in the **Presets** tab, ready to drag onto pages.
 - **CAPTURE**: press it (red), then nudge a fader or hit solo or mute on each channel you
   want: one, or several. Each is read in full and the button counts them. Then press a
   slot to store them all there. Press CAPTURE again to cancel.
+- **Hold CAPTURE for two seconds** to clear something. The button reads "PRESS SLOT TO
+  CLEAR"; the next slot, script or name set button you press is emptied, and everything
+  goes back to normal. It gives up after ten seconds, or straight away if you tap CAPTURE
+  or CANCEL. Nothing is sent to the console.
 - **GRAB**: adds the last channel you touched to the capture, without arming first.
 - **TO**: where recalls land. ORIGINAL sends a capture back to the channel it came from.
   TOUCHED sends it to whichever channel you touched last, so a capture works like a

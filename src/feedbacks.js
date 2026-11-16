@@ -25,6 +25,7 @@ export const FEEDBACK_STYLES = {
 	script_used: { bgcolor: COLORS.purple, color: COLORS.white },
 	nameset_used: { bgcolor: COLORS.green, color: COLORS.white },
 	names_recording: { bgcolor: COLORS.red, color: COLORS.white },
+	clearing: { bgcolor: COLORS.white, color: COLORS.red },
 }
 
 /** @param {{engine: import('./engine.js').Engine | null}} self */
@@ -52,11 +53,15 @@ export function getFeedbacks(self) {
 						{ id: 'armed', label: 'Armed, waiting for a touch' },
 						{ id: 'capturing', label: 'Reading the channel' },
 						{ id: 'holding', label: 'Captured, waiting for a slot' },
+						{ id: 'clearing', label: 'Clear mode: next slot pressed is cleared' },
 						{ id: 'busy', label: 'Any of the above' },
 					],
 				},
 			],
-			(o) => (o.state === 'busy' ? e().mode !== 'idle' : e().mode === o.state),
+			(o) => {
+				if (o.state === 'clearing') return e().clearMode
+				return o.state === 'busy' ? e().mode !== 'idle' || e().clearMode : e().mode === o.state
+			},
 		),
 		slot_used: boolean('slot_used', 'Slot has a capture', [slotOption], (o) => e().lib.slots[String(o.slot)]),
 		slot_last: boolean(

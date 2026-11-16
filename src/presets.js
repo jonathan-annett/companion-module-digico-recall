@@ -12,12 +12,15 @@ export function getPresets(label, config) {
 	const presets = {}
 	const sections = new Map()
 
-	const button = (id, section, name, text, down, feedbacks = [], size = 'auto') => {
+	const button = (id, section, name, text, down, feedbacks = [], size = 'auto', held = null) => {
+		const step = { down, up: [] }
+		// Actions run when the button has been held for this many milliseconds
+		if (held) step[held.after] = { options: { runWhileHeld: true }, actions: held.actions }
 		presets[id] = {
 			type: 'simple',
 			name,
 			style: { text, size, color: COLORS.white, bgcolor: COLORS.dim },
-			steps: [{ down, up: [] }],
+			steps: [step],
 			feedbacks,
 		}
 		if (!sections.has(section)) sections.set(section, [])
@@ -27,17 +30,21 @@ export function getPresets(label, config) {
 	const fb = (feedbackId, options = {}, style = FEEDBACK_STYLES[feedbackId]) => ({ feedbackId, options, style })
 	const amber = { bgcolor: COLORS.amber, color: COLORS.black }
 
+	// Tap: start a capture. Hold for two seconds: clear mode, the next slot pressed is emptied.
 	button(
 		'arm',
 		'Capture',
-		'Arm capture',
+		'Capture (hold 2 s to clear a slot)',
 		`CAPTURE\\n${v('state')}`,
 		[act('arm')],
 		[
 			fb('state', { state: 'armed' }),
 			fb('state', { state: 'capturing' }, amber),
 			fb('state', { state: 'holding' }, amber),
+			fb('state', { state: 'clearing' }, FEEDBACK_STYLES.clearing),
 		],
+		'auto',
+		{ after: 2000, actions: [act('clear_mode')] },
 	)
 	button(
 		'capture_touched',
@@ -79,9 +86,6 @@ export function getPresets(label, config) {
 			[fb('slot_used', { slot: i }), fb('slot_last', { slot: i })],
 		)
 	}
-	for (const i of ids(config.slotCount)) {
-		button(`clear_slot_${i}`, 'Clear slots', `Clear slot ${i}`, `CLEAR\\n${i}`, [act('clear_slot', { slot: i })])
-	}
 
 	button(
 		'script_record',
@@ -100,9 +104,6 @@ export function getPresets(label, config) {
 			[act('script', { script: i })],
 			[fb('script_used', { script: i })],
 		)
-	}
-	for (const i of ids(config.scriptCount)) {
-		button(`clear_script_${i}`, 'Scripts', `Clear script ${i}`, `CLEAR\\nS${i}`, [act('clear_script', { script: i })])
 	}
 
 	button(

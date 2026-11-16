@@ -87,7 +87,10 @@ test('presets only use actions, feedbacks, options and variables that exist', ()
 			assert.ok(variables[name], `${id} uses unknown variable ${name}`)
 		}
 		for (const step of preset.steps) {
-			for (const a of [...step.down, ...step.up]) {
+			const held = Object.keys(step)
+				.filter((key) => /^\d+$/.test(key))
+				.flatMap((key) => step[key].actions)
+			for (const a of [...step.down, ...step.up, ...held]) {
 				assert.ok(actions[a.actionId], `${id} uses unknown action ${a.actionId}`)
 				for (const key of Object.keys(a.options)) assert.ok(optionIds(actions[a.actionId]).has(key), `${id}: ${key}`)
 			}
@@ -98,6 +101,11 @@ test('presets only use actions, feedbacks, options and variables that exist', ()
 			for (const key of Object.keys(f.options)) assert.ok(optionIds(feedbacks[f.feedbackId]).has(key), `${id}: ${key}`)
 		}
 	}
+
+	// Holding CAPTURE for two seconds enters clear mode; there are no separate clear buttons
+	assert.equal(presets.arm.steps[0][2000].actions[0].actionId, 'clear_mode')
+	assert.equal(presets.arm.steps[0][2000].options.runWhileHeld, true)
+	assert.ok(!Object.keys(presets).some((id) => id.startsWith('clear_')))
 
 	// Fixed-size labels must fit on one line: Companion wraps five letters at size 18
 	for (const [id, preset] of Object.entries(presets)) {

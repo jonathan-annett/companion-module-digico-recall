@@ -20,7 +20,7 @@ const list = (value) => [].concat(value ?? []).map(String)
 export function getActions(self) {
 	const e = () => self.engine
 	// Adding a channel is allowed whenever names aren't being collected; a capture can hold several
-	const canCapture = () => e() && !e().namesRec
+	const canCapture = () => e() && !e().namesRec && !e().clearMode
 
 	return {
 		arm: {
@@ -153,6 +153,13 @@ export function getActions(self) {
 			callback: async (action) => {
 				e()?.restoreNameSet(Number(action.options.set), list(action.options.sections))
 			},
+		},
+		clear_mode: {
+			name: 'Clear: the next slot, script or name set pressed is emptied',
+			description:
+				'Meant for a long press on the capture button. Switches itself off after 10 seconds, or when capture or cancel is pressed.',
+			options: [],
+			callback: async () => e()?.setClearMode(true),
 		},
 		cancel: {
 			name: 'Cancel capture / script recording / saving names',

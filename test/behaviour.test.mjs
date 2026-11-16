@@ -207,6 +207,74 @@ test('multi-channel capture: arm, touch several channels, one slot stores and re
 	assert.equal(engine.lib.scripts['1'].steps.length, 3)
 })
 
+test('clear mode: the next slot, script or name set pressed is emptied, and nothing is sent', async (t) => {
+	const { sim, engine, saved } = await rig(t, { clearTimeout: 150 })
+	for (const slot of [1, 2]) {
+		await engine.captureToHold('Input_Channels', slot)
+		engine.pressSlot(slot)
+	}
+	engine.toggleScriptRecord()
+	engine.pressSlot(1)
+	engine.toggleScriptRecord()
+	engine.pressScript(1)
+	engine.toggleNamesRecord()
+	await engine.addAllNamesToList(['Aux_Outputs'])
+	engine.pressNameSet(1)
+	await sleep(100)
+	sim.received.length = 0
+
+	engine.setClearMode(true)
+	assert.equal(engine.stateLabel(), 'PRESS SLOT TO CLEAR')
+	assert.equal(engine.pressSlot(1), 'cleared')
+	assert.equal(engine.clearMode, false, 'one press, then back to normal')
+	assert.equal(engine.lib.slots['1'], undefined)
+	assert.ok(engine.lib.slots['2'], 'other slots untouched')
+	assert.equal(saved().slots['1'], undefined, 'saved')
+
+	engine.setClearMode(true)
+	assert.equal(engine.pressScript(1), 'cleared')
+	engine.setClearMode(true)
+	assert.equal(engine.pressNameSet(1), 'cleared')
+	assert.deepEqual([engine.lib.scripts, engine.lib.nameSets], [{}, {}])
+
+	// An empty slot just ends clear mode
+	engine.setClearMode(true)
+	assert.equal(engine.pressSlot(7), 'empty')
+	assert.equal(engine.clearMode, false)
+	await sleep(60)
+	assert.equal(sim.received.length, 0, 'clearing never writes to the console')
+})
+
+test('clear mode: drops a capture in progress, ends on capture or cancel, and times out', async (t) => {
+	const { sim, engine } = await rig(t, { clearTimeout: 150 })
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(3)
+
+	// Holding the capture button first arms (on press) and then enters clear mode
+	engine.toggleArm()
+	sim.surface('/Input_Channels/4/solo', 'f', [1])
+	await until(() => engine.mode === 'holding', 'a capture waiting')
+	engine.setClearMode(true)
+	assert.equal(engine.mode, 'idle', 'the waiting capture is dropped, not stored')
+	sim.surface('/Input_Channels/5/solo', 'f', [1])
+	await sleep(60)
+	assert.equal(engine.mode, 'idle', 'touches do not capture in clear mode')
+
+	engine.toggleArm() // tapping capture leaves clear mode without arming
+	assert.equal(engine.clearMode, false)
+	assert.equal(engine.mode, 'idle')
+
+	engine.setClearMode(true)
+	engine.cancel()
+	assert.equal(engine.clearMode, false)
+
+	engine.setClearMode(true)
+	await sleep(250)
+	assert.equal(engine.clearMode, false, 'switches itself off')
+	assert.equal(engine.pressSlot(3), 'recalled', 'so a later press recalls rather than deletes')
+	assert.ok(engine.lib.slots['3'])
+})
+
 test('recall with no scopes switched on sends nothing', async (t) => {
 	const { sim, engine } = await rig(t)
 	await engine.captureToHold('Input_Channels', 1)
