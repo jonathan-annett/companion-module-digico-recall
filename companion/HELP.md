@@ -43,6 +43,10 @@ After importing a newer module package, open the connection (or the module on th
 page) and select the new version. Companion keeps the earlier versions, so you can switch
 back if you need to.
 
+When a newer version of this module has been released, the web page shows a bar offering
+the package to download (it needs internet access on the device showing the page). Import
+it in Companion's Modules page and choose the new version on the connection.
+
 ## Buttons
 
 Everything is in the **Presets** tab, ready to drag onto pages. There is one idea behind
