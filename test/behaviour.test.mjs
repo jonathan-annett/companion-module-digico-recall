@@ -14,7 +14,7 @@ import { encode, decode } from '../src/osc.js'
 import { captureSuffixes, scopeOf, parseAddress, SCOPE_IDS, SECTION_IDS } from '../src/params.js'
 import { localAddressFor, consoleSetup } from '../src/network.js'
 import { getConfigFields } from '../src/config.js'
-import { cleanSnapshot, cleanScript, cleanLibrary, cleanNames } from '../src/validate.js'
+import { cleanSlot, cleanScript, cleanLibrary, cleanNames } from '../src/validate.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 async function until(check, what, ms = 4000) {
@@ -124,8 +124,8 @@ test('while armed: meters, names from queries and console info do not trigger a 
 	assert.equal(engine.lastTouched, null)
 	sim.surface('/Input_Channels/3/solo', 'f', [1])
 	await until(() => engine.mode === 'holding', 'solo press triggers the capture')
-	assert.equal(engine.held.index, 3)
-	assert.equal(engine.held.values.solo, undefined, 'solo state itself is not stored')
+	assert.equal(engine.held[0].index, 3)
+	assert.equal(engine.held[0].values.solo, undefined, 'solo state itself is not stored')
 })
 
 test('cancel: arming twice cancels, and cancel drops a waiting capture and a script recording', async (t) => {
@@ -143,7 +143,7 @@ test('cancel: arming twice cancels, and cancel drops a waiting capture and a scr
 	engine.toggleScriptRecord()
 	engine.cancel()
 	assert.equal(engine.mode, 'idle')
-	assert.equal(engine.held, null)
+	assert.equal(engine.held.length, 0)
 	assert.equal(engine.scriptRec, null)
 	assert.equal(engine.pressSlot(1), 'empty', 'nothing was stored')
 })
@@ -159,6 +159,52 @@ test('slot buttons do nothing harmful while a capture is in progress or the slot
 	assert.equal(engine.pressScript(1), 'empty')
 	await sleep(80)
 	assert.equal(sim.received.length, 0, 'nothing was sent to the console')
+})
+
+test('multi-channel capture: arm, touch several channels, one slot stores and recalls them all', async (t) => {
+	const { sim, engine } = await rig(t)
+	engine.toggleArm()
+	// A fader move is a stream of messages; it must still add the channel only once
+	for (const v of [-10, -9, -8, -7]) sim.surface('/Input_Channels/2/fader', 'f', [v])
+	sim.surface('/Input_Channels/6/solo', 'f', [1])
+	sim.surface('/Group_Outputs/3/mute', 'f', [1])
+	sim.surface('/Input_Channels/2/mute', 'f', [0])
+	await until(() => engine.mode === 'holding' && engine.held.length === 3, 'three channels captured')
+	assert.equal(engine.stateLabel(), '3 CH: PRESS SLOT')
+	assert.equal(engine.pressSlot(1), 'stored')
+	assert.equal(engine.mode, 'idle')
+	const slot = engine.lib.slots['1']
+	assert.deepEqual(
+		slot.channels.map((c) => `${c.section}/${c.index}`),
+		['Input_Channels/2', 'Input_Channels/6', 'Group_Outputs/3'],
+	)
+	assert.equal(engine.slotLabel(1), 'In2, In6, Grp3')
+
+	// Change all three plus a bystander, then recall EQ only
+	for (const path of ['/Input_Channels/2', '/Input_Channels/6', '/Group_Outputs/3', '/Input_Channels/9']) {
+		sim.surface(`${path}/EQ/eq_gain_1`, 'f', [-15])
+		sim.surface(`${path}/Dynamics/comp_thresh_1`, 'f', [-50])
+	}
+	await sleep(50)
+	engine.setScopes(['eq'])
+	// "Last touched" must not redirect a multi-channel capture
+	engine.setTargetMode('touched')
+	sim.surface('/Input_Channels/9/mute', 'f', [0])
+	await until(() => engine.lastTouched?.index === 9, 'touch 9')
+	assert.equal(engine.pressSlot(1), 'recalled')
+	for (const [i, path] of ['/Input_Channels/2', '/Input_Channels/6', '/Group_Outputs/3'].entries()) {
+		const want = slot.channels[i].values['EQ/eq_gain_1'].a[0]
+		await until(() => sim.get(`${path}/EQ/eq_gain_1`) === want, `${path} EQ restored`)
+		assert.equal(sim.get(`${path}/Dynamics/comp_thresh_1`), -50, 'comp not in scope')
+	}
+	assert.equal(sim.get('/Input_Channels/9/EQ/eq_gain_1'), -15, 'bystander untouched')
+
+	// Recording that recall into a script gives one step per channel
+	engine.toggleScriptRecord()
+	engine.pressSlot(1)
+	engine.toggleScriptRecord()
+	engine.pressScript(1)
+	assert.equal(engine.lib.scripts['1'].steps.length, 3)
 })
 
 test('recall with no scopes switched on sends nothing', async (t) => {
@@ -218,7 +264,7 @@ test('script recorded with "last touched" target replays to the channels it was 
 	sim.surface('/Input_Channels/9/mute', 'f', [0]) // touching something else must not redirect the script
 	await until(() => engine.lastTouched?.index === 9, 'touch 9')
 	engine.pressScript(2)
-	const want = engine.lib.slots['1'].values['EQ/eq_gain_1'].a[0]
+	const want = engine.lib.slots['1'].channels[0].values['EQ/eq_gain_1'].a[0]
 	await until(() => sim.get('/Input_Channels/6/EQ/eq_gain_1') === want, 'input 6')
 	await until(() => sim.get('/Input_Channels/7/EQ/eq_gain_1') === want, 'input 7')
 	assert.notEqual(sim.get('/Input_Channels/9/EQ/eq_gain_1'), want)
@@ -345,22 +391,46 @@ test('values go back with the same OSC type they were read with', async (t) => {
 })
 
 test('validation: bad entries from the web page or an imported file are dropped or repaired', () => {
-	assert.equal(cleanSnapshot({ section: 'Nope', index: 1, values: {} }), null)
-	assert.equal(cleanSnapshot({ section: 'Input_Channels', index: 0, values: {} }), null)
-	const snap = cleanSnapshot({
-		section: 'Input_Channels',
-		index: '3',
-		values: {
-			fader: { t: 'f', a: ['-6.5'] },
-			'EQ/eq_gain_1': { t: 'f', a: [Infinity] },
-			'bad path!': { t: 'f', a: [1] },
-			'Channel_Input/name': { t: 's', a: [42] },
-			mute: { t: 'f', a: [1, 2] },
-			pan: { t: 'x', a: [1] },
-		},
+	assert.equal(cleanSlot({ section: 'Nope', index: 1, values: {} }), null)
+	assert.equal(cleanSlot({ section: 'Input_Channels', index: 0, values: {} }), null)
+	assert.equal(cleanSlot({ channels: [] }), null)
+	const slot = cleanSlot({
+		label: 7,
+		channels: [
+			{
+				section: 'Input_Channels',
+				index: '3',
+				values: {
+					fader: { t: 'f', a: ['-6.5'] },
+					'EQ/eq_gain_1': { t: 'f', a: [Infinity] },
+					'bad path!': { t: 'f', a: [1] },
+					'Channel_Input/name': { t: 's', a: [42] },
+					mute: { t: 'f', a: [1, 2] },
+					pan: { t: 'x', a: [1] },
+				},
+			},
+			{ section: 'Bogus', index: 1, values: {} },
+		],
 	})
-	assert.equal(snap.index, 3)
-	assert.deepEqual(snap.values, { fader: { t: 'f', a: [-6.5] }, 'Channel_Input/name': { t: 's', a: ['42'] } })
+	assert.equal(slot.label, '7')
+	assert.equal(slot.channels.length, 1, 'the invalid channel is dropped')
+	assert.equal(slot.channels[0].index, 3)
+	assert.deepEqual(slot.channels[0].values, {
+		fader: { t: 'f', a: [-6.5] },
+		'Channel_Input/name': { t: 's', a: ['42'] },
+	})
+	// A slot saved by 0.1.0 (one channel, fields directly on the slot) is wrapped
+	const old = cleanSlot({
+		section: 'Aux_Outputs',
+		index: 2,
+		name: 'IEM',
+		label: 'Mon',
+		values: { fader: { t: 'f', a: [0] } },
+	})
+	assert.deepEqual(old.channels, [
+		{ section: 'Aux_Outputs', index: 2, name: 'IEM', values: { fader: { t: 'f', a: [0] } } },
+	])
+	assert.equal(old.label, 'Mon')
 	assert.equal(cleanScript({ steps: 'nope' }), null)
 	assert.equal(
 		cleanScript({
@@ -504,11 +574,11 @@ test('library file: written on every change and read back on start', async (t) =
 	await until(() => mod.engine.counts.Aux_Outputs !== undefined, 'console info')
 	await mod.actions.capture.callback({ options: { section: 'Aux_Outputs', index: 2 } })
 	await mod.actions.slot.callback({ options: { slot: 9 } })
-	assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).slots['9'].section, 'Aux_Outputs')
+	assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).slots['9'].channels[0].section, 'Aux_Outputs')
 	await mod.destroy()
 	mod = new Instance({})
 	await mod.init(config) // note: no library in the config, only the file
-	assert.equal(mod.engine.lib.slots['9'].index, 2)
+	assert.equal(mod.engine.lib.slots['9'].channels[0].index, 2)
 })
 
 test('iPad relay: datagrams pass both ways, and a value written from the iPad counts as a touch', async (t) => {

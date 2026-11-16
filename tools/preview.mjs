@@ -78,6 +78,9 @@ for (const [section, index] of [
 	await run('capture', { section, index })
 	await run('slot', { slot: slot++ })
 }
+// One capture holding several channels
+for (const index of [1, 2, 3, 4, 5]) await run('capture', { section: 'Input_Channels', index })
+await run('slot', { slot: slot++ })
 await run('script_record')
 await run('scopes', { scopes: ['eq', 'comp'] })
 await run('slot', { slot: 1 })

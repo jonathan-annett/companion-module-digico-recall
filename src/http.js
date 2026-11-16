@@ -1,5 +1,5 @@
 import { SECTIONS, SECTION_IDS, SCOPES, SCOPE_IDS } from './params.js'
-import { cleanSnapshot, cleanScript, cleanNameSet, cleanNames, cleanLibrary } from './validate.js'
+import { cleanSlot, cleanScript, cleanNameSet, cleanNames, cleanLibrary } from './validate.js'
 import { PAGE } from './webui.js'
 import { consoleSetup } from './network.js'
 
@@ -76,7 +76,7 @@ export async function handleHttp(self, request) {
 				await self.setConsoleHost(needIp())
 				return json({ ok: true })
 			case '/api/slot':
-				return store('slots', cleanSnapshot)
+				return store('slots', cleanSlot)
 			case '/api/script':
 				return store('scripts', cleanScript)
 			case '/api/nameset':
@@ -89,10 +89,12 @@ export async function handleHttp(self, request) {
 				return json({ sent: engine.applyNames(cleanNames(body.names)) })
 			case '/api/slot/recall': {
 				needId()
-				const snap = engine.lib.slots[id]
-				if (!snap) throw new Error('That slot is empty')
+				const slot = engine.lib.slots[id]
+				if (!slot) throw new Error('That slot is empty')
 				const scopes = new Set((Array.isArray(body.scopes) ? body.scopes : []).filter((s) => SCOPE_IDS.includes(s)))
-				return json({ sent: engine.sendValues(snap.section, snap.index, snap.values, scopes) })
+				let sent = 0
+				for (const c of slot.channels) sent += engine.sendValues(c.section, c.index, c.values, scopes)
+				return json({ sent })
 			}
 			case '/api/script/run': {
 				needId()

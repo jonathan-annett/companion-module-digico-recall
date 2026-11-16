@@ -120,7 +120,8 @@ await test('arm, touch a channel, press a slot: whole channel is stored', async 
 	await run('slot', { slot: 1 })
 	assert.equal(mod.engine.mode, 'idle')
 	assert.equal(fb('slot_used', { slot: 1 }), true)
-	const snap = mod.engine.lib.slots['1']
+	const snap = mod.engine.lib.slots['1'].channels[0]
+	assert.equal(mod.engine.lib.slots['1'].channels.length, 1)
 	assert.equal(snap.section, 'Input_Channels')
 	assert.equal(snap.index, 5)
 	assert.equal(snap.name, 'In5')
@@ -146,7 +147,7 @@ await test('recall sends only the scopes that are switched on', async () => {
 	sim.surface('/Input_Channels/5/fader', 'f', [3])
 	sim.surface('/Input_Channels/5/Channel_Input/analog_gain', 'f', [55])
 	await sleep(50)
-	const snap = mod.engine.lib.slots['1']
+	const snap = mod.engine.lib.slots['1'].channels[0]
 	await run('scopes', { scopes: ['eq', 'gain'] })
 	sim.received.length = 0
 	await run('slot', { slot: 1 })
@@ -182,7 +183,7 @@ await test('recall to the last touched channel instead of the original', async (
 	await until(() => mod.engine.lastTouched?.section === 'Group_Outputs', 'touch on group 2')
 	const before5 = sim.get('/Input_Channels/5/Dynamics/comp_ratio_1')
 	await run('slot', { slot: 1 })
-	const want = mod.engine.lib.slots['1'].values['Dynamics/comp_ratio_1'].a[0]
+	const want = mod.engine.lib.slots['1'].channels[0].values['Dynamics/comp_ratio_1'].a[0]
 	await until(() => sim.get('/Group_Outputs/2/Dynamics/comp_ratio_1') === want, 'comp copied to group 2')
 	assert.equal(sim.get('/Input_Channels/5/Dynamics/comp_ratio_1'), before5)
 	await run('target', { mode: 'original' })
@@ -192,8 +193,8 @@ await test('graphic EQ capture and recall', async () => {
 	await run('capture', { section: 'Graphic_EQ', index: 2 })
 	assert.equal(mod.engine.mode, 'holding')
 	await run('slot', { slot: 2 })
-	assert.equal(Object.keys(mod.engine.lib.slots['2'].values).length, 34)
-	const saved = mod.engine.lib.slots['2'].values.geq_gain_17.a[0]
+	assert.equal(Object.keys(mod.engine.lib.slots['2'].channels[0].values).length, 34)
+	const saved = mod.engine.lib.slots['2'].channels[0].values.geq_gain_17.a[0]
 	sim.surface('/Graphic_EQ/2/geq_gain_17', 'f', [-11])
 	await run('scopes', { scopes: ['eq'] })
 	await run('slot', { slot: 2 })
@@ -274,8 +275,9 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 
 	const lib = (await http('GET', '/api/lib')).data
 	const snap = lib.slots['4']
+	assert.equal(snap.channels.length, 1)
 	snap.label = 'Lead Vox'
-	snap.values['EQ/eq_gain_1'].a[0] = -4.5
+	snap.channels[0].values['EQ/eq_gain_1'].a[0] = -4.5
 	assert.equal((await http('POST', '/api/slot', { id: '4', value: snap })).status, 200)
 	assert.equal(mod.engine.lib.slots['4'].label, 'Lead Vox')
 	await until(() => mod.vars.slot_4 === 'Lead Vox', 'label reaches the button')
@@ -299,9 +301,9 @@ await test('web page and API: browse, edit a value, rename, send, names, import'
 	// Bad input is refused or cleaned rather than stored
 	assert.equal((await http('POST', '/api/slot', { id: '5', value: { section: 'Nope', index: 1 } })).status, 400)
 	assert.equal((await http('POST', '/api/slot', { id: 'x', value: snap })).status, 400)
-	snap.values['EQ/eq_gain_2'] = { t: 'f', a: ['not a number'] }
+	snap.channels[0].values['EQ/eq_gain_2'] = { t: 'f', a: ['not a number'] }
 	await http('POST', '/api/slot', { id: '5', value: snap })
-	assert.equal(mod.engine.lib.slots['5'].values['EQ/eq_gain_2'], undefined)
+	assert.equal(mod.engine.lib.slots['5'].channels[0].values['EQ/eq_gain_2'], undefined)
 
 	await http('POST', '/api/slot', { id: '5', value: null })
 	assert.equal(mod.engine.lib.slots['5'], undefined)
@@ -344,7 +346,7 @@ await test('a silent console produces a warning, not a stored empty capture', as
 	await sim.stop()
 	await mod.actions.capture.callback({ options: { section: 'Input_Channels', index: 1 } })
 	assert.equal(mod.engine.mode, 'idle')
-	assert.equal(mod.engine.held, null)
+	assert.equal(mod.engine.held.length, 0)
 })
 
 after(async () => {

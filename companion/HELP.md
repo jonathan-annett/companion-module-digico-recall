@@ -37,14 +37,15 @@ Everything is in the **Presets** tab, ready to drag onto pages.
 
 **Capture**
 
-- **CAPTURE**: press it (red), then nudge a fader or hit solo or mute on the channel you
-  want. The module reads the whole channel (amber), then waits for you to press a slot.
-  Press CAPTURE again to cancel.
-- **GRAB**: reads the last channel you touched, without arming first.
+- **CAPTURE**: press it (red), then nudge a fader or hit solo or mute on each channel you
+  want: one, or several. Each is read in full and the button counts them. Then press a
+  slot to store them all there. Press CAPTURE again to cancel.
+- **GRAB**: adds the last channel you touched to the capture, without arming first.
 - **TO**: where recalls land. ORIGINAL sends a capture back to the channel it came from.
   TOUCHED sends it to whichever channel you touched last, so a capture works like a
   preset you can drop on any channel (inputs, groups, auxes and matrices share EQ and
-  dynamics addresses, so input to group works too).
+  dynamics addresses, so input to group works too). A capture holding several channels always
+  goes back to its own channels.
 
 **Recall scope**
 
@@ -54,7 +55,9 @@ Everything is in the **Presets** tab, ready to drag onto pages.
 
 **Slots**
 
-- A slot button stores when a capture is waiting, otherwise it recalls. Green means it
+- A slot button stores when a capture is waiting, otherwise it recalls. A slot can hold one
+  channel or many (a whole drum kit, say); recalling sends the lit scopes to every channel
+  in it. Green means it
   holds something, blue means it was the last one recalled. The button shows what it holds.
 - Graphic EQs are captured the same way: touch a band on the GEQ, press a slot. Recall
   them with the EQ scope on.

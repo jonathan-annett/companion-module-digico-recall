@@ -22,15 +22,25 @@ function cleanTarget(obj) {
 	return { section: obj.section, index }
 }
 
-export function cleanSnapshot(snap) {
-	const target = cleanTarget(snap)
+function cleanChannel(channel) {
+	const target = cleanTarget(channel)
 	if (!target) return null
+	return { ...target, name: String(channel.name ?? ''), values: cleanValues(channel.values) }
+}
+
+/**
+ * A slot: { label, when, channels: [...] }. Libraries from 0.1.0 stored one channel per
+ * slot directly on the slot; those are accepted and wrapped.
+ */
+export function cleanSlot(slot) {
+	if (!slot || typeof slot !== 'object') return null
+	const source = Array.isArray(slot.channels) ? slot.channels : [slot]
+	const channels = source.map(cleanChannel).filter(Boolean)
+	if (!channels.length) return null
 	return {
-		...target,
-		name: String(snap.name ?? ''),
-		label: String(snap.label ?? ''),
-		when: String(snap.when ?? new Date().toISOString()),
-		values: cleanValues(snap.values),
+		label: String(slot.label ?? ''),
+		when: String(slot.when ?? new Date().toISOString()),
+		channels,
 	}
 }
 
@@ -74,10 +84,10 @@ export function cleanNameSet(set) {
 }
 
 export function cleanLibrary(input) {
-	const lib = { version: 1, slots: {}, scripts: {}, nameSets: {}, learned: {} }
+	const lib = { version: 2, slots: {}, scripts: {}, nameSets: {}, learned: {} }
 	if (!input || typeof input !== 'object') return lib
 	for (const [id, snap] of Object.entries(input.slots ?? {})) {
-		const clean = cleanSnapshot(snap)
+		const clean = cleanSlot(snap)
 		if (clean) lib.slots[id] = clean
 	}
 	for (const [id, script] of Object.entries(input.scripts ?? {})) {

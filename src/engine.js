@@ -15,8 +15,15 @@ import {
 const ECHO_WINDOW_MS = 1500
 const STATUS_POLL_MS = 5000
 
+/** Short text for a button: one channel in full, a few by name, more as a count. */
+export function describeChannels(channels) {
+	if (channels.length === 1) return describe(channels[0].section, channels[0].index, channels[0].name)
+	if (channels.length <= 3) return channels.map((c) => c.name || describe(c.section, c.index)).join(', ')
+	return `${channels.length} channels`
+}
+
 export function emptyLibrary() {
-	return { version: 1, slots: {}, scripts: {}, nameSets: {}, learned: {} }
+	return { version: 2, slots: {}, scripts: {}, nameSets: {}, learned: {} }
 }
 
 export function normalizeLibrary(input) {
@@ -33,9 +40,9 @@ export function normalizeLibrary(input) {
  * last touched channel, captures and recalls channel snapshots, records scripts, and
  * captures and restores names.
  *
- * A snapshot is { section, index, name, when, values: { suffix: { t, a } } } where t is the
- * OSC type-tag string and a the argument list exactly as the console reported them, so a
- * recall sends back precisely what was read.
+ * A captured channel is { section, index, name, values: { suffix: { t, a } } } where t is
+ * the OSC type-tag string and a the argument list exactly as the console reported them, so
+ * a recall sends back precisely what was read. A slot holds one or more captured channels.
  */
 export class Engine {
 	/**
@@ -47,8 +54,10 @@ export class Engine {
 		this.hooks = hooks
 		this.lib = emptyLibrary()
 		this.scopes = new Set(['eq'])
-		this.mode = 'idle' // idle | armed | capturing | holding
-		this.held = null
+		this.armed = false // true from pressing capture until a slot is pressed or it is cancelled
+		this.pending = 0 // channel reads in progress
+		this.reading = new Set() // which channels those are
+		this.held = [] // channels captured so far, waiting for a slot
 		this.scriptRec = null // null, or { steps: [] } while recording
 		this.scriptHeld = null // recorded steps waiting for a script button
 		this.namesRec = null // null, or { names: { section: { number: name } } } while collecting names
@@ -194,7 +203,7 @@ export class Engine {
 	touch(section, index) {
 		const same = this.lastTouched && this.lastTouched.section === section && this.lastTouched.index === index
 		this.lastTouched = { section, index }
-		if (this.mode === 'armed') {
+		if (this.armed) {
 			void this.captureToHold(section, index)
 		} else if (this.namesRec) {
 			void this.addNameToList(section, index)
@@ -264,37 +273,52 @@ export class Engine {
 		return { section, index, name, when: new Date().toISOString(), values }
 	}
 
+	/**
+	 * Read one channel and add it to the capture being built. A capture can hold several
+	 * channels: arm, touch as many as you like, then press a slot. A fader move arrives as a
+	 * stream of messages, so a channel that is already in the capture, or being read, is
+	 * not read again.
+	 */
 	async captureToHold(section, index) {
-		this.mode = 'capturing'
+		const key = `${section}/${index}`
+		if (this.reading.has(key) || this.held.some((c) => c.section === section && c.index === index)) return
+		this.armed = true
+		this.reading.add(key)
+		this.pending++
 		this.changed()
 		const snap = await this.captureChannel(section, index)
+		this.reading.delete(key)
+		this.pending--
+		if (!this.armed) return // cancelled meanwhile
 		const n = Object.keys(snap.values).length
-		if (this.mode !== 'capturing') return // cancelled meanwhile
 		if (!n) {
 			this.log('warn', `Capture of ${describe(section, index)} got no replies from the console`)
-			this.mode = 'idle'
+			if (!this.held.length && !this.pending) this.armed = false
 		} else {
-			this.log('info', `Captured ${describe(section, index, snap.name)}: ${n} values. Press a slot to store.`)
-			this.held = snap
-			this.mode = 'holding'
+			this.held.push(snap)
+			this.log('info', `Captured ${describe(section, index, snap.name)}: ${n} values. Touch more, or press a slot.`)
 		}
 		this.changed()
+	}
+
+	/** idle | armed (waiting for a touch) | capturing (reading) | holding (waiting for a slot) */
+	get mode() {
+		if (!this.armed) return 'idle'
+		if (this.pending) return 'capturing'
+		return this.held.length ? 'holding' : 'armed'
 	}
 
 	/** The "start recording" button. Pressing it again cancels. */
 	toggleArm() {
 		if (this.namesRec) return // one kind of collecting at a time
-		if (this.mode === 'idle') this.mode = 'armed'
-		else {
-			this.mode = 'idle'
-			this.held = null
-		}
+		this.armed = !this.armed
+		this.held = []
 		this.changed()
 	}
 
 	cancel() {
-		this.mode = 'idle'
-		this.held = null
+		this.armed = false
+		this.held = []
 		this.scriptRec = null
 		this.scriptHeld = null
 		this.namesRec = null
@@ -335,41 +359,57 @@ export class Engine {
 		return n
 	}
 
-	/** A slot button: store if a capture is waiting, otherwise recall. */
+	/**
+	 * A slot button: store if a capture is waiting, otherwise recall.
+	 * A slot is { label, when, channels: [{ section, index, name, values }] }.
+	 */
 	pressSlot(id) {
 		id = String(id)
 		if (this.mode === 'holding') {
-			this.lib.slots[id] = this.held
-			this.held = null
-			this.mode = 'idle'
-			this.log('info', `Stored ${describe(this.lib.slots[id].section, this.lib.slots[id].index)} in slot ${id}`)
+			this.lib.slots[id] = { label: '', when: new Date().toISOString(), channels: this.held }
+			this.held = []
+			this.armed = false
+			this.log('info', `Stored ${describeChannels(this.lib.slots[id].channels)} in slot ${id}`)
 			this.persist()
 			this.changed()
 			return 'stored'
 		}
 		if (this.mode !== 'idle' || this.namesRec) return 'busy'
-		const snap = this.lib.slots[id]
-		if (!snap) return 'empty'
-		const target = this.resolveTarget(snap)
-		if (!target) return 'mismatch'
-		const n = this.sendValues(target.section, target.index, snap.values, this.scopes)
-		this.lastRecalled = id
-		this.log('info', `Recalled slot ${id} to ${describe(target.section, target.index)}: ${n} values`)
-		if (this.scriptRec) {
-			// Scripts keep their own copy of the values, so re-using a slot later doesn't change them.
-			const values = {}
-			for (const [suffix, v] of Object.entries(snap.values)) {
-				if (this.scopes.has(scopeOf(suffix))) values[suffix] = v
-			}
-			this.scriptRec.steps.push({
-				section: target.section,
-				index: target.index,
-				name: snap.name,
-				from: id,
-				scopes: SCOPE_IDS.filter((s) => this.scopes.has(s)),
-				values,
-			})
+		const slot = this.lib.slots[id]
+		if (!slot) return 'empty'
+		// "Last touched" only makes sense for one channel; a multi-channel capture goes home.
+		const single = slot.channels.length === 1
+		const targets = []
+		for (const channel of slot.channels) {
+			const target = single ? this.resolveTarget(channel) : { section: channel.section, index: channel.index }
+			if (!target) return 'mismatch'
+			targets.push(target)
 		}
+		let n = 0
+		slot.channels.forEach((channel, i) => {
+			const target = targets[i]
+			n += this.sendValues(target.section, target.index, channel.values, this.scopes)
+			if (this.scriptRec) {
+				// Scripts keep their own copy of the values, so re-using a slot later doesn't change them.
+				const values = {}
+				for (const [suffix, v] of Object.entries(channel.values)) {
+					if (this.scopes.has(scopeOf(suffix))) values[suffix] = v
+				}
+				this.scriptRec.steps.push({
+					section: target.section,
+					index: target.index,
+					name: channel.name,
+					from: id,
+					scopes: SCOPE_IDS.filter((scope) => this.scopes.has(scope)),
+					values,
+				})
+			}
+		})
+		this.lastRecalled = id
+		this.log(
+			'info',
+			`Recalled slot ${id} to ${targets.map((t) => describe(t.section, t.index)).join(', ')}: ${n} values`,
+		)
 		this.changed()
 		return 'recalled'
 	}
@@ -577,9 +617,9 @@ export class Engine {
 	// ---- summaries for buttons and the web page ----------------------------------------
 
 	slotLabel(id) {
-		const snap = this.lib.slots[String(id)]
-		if (!snap) return ''
-		return snap.label || describe(snap.section, snap.index, snap.name)
+		const slot = this.lib.slots[String(id)]
+		if (!slot) return ''
+		return slot.label || describeChannels(slot.channels)
 	}
 
 	scriptLabel(id) {
@@ -596,7 +636,7 @@ export class Engine {
 	stateLabel() {
 		if (this.mode === 'armed') return 'TOUCH A CHANNEL'
 		if (this.mode === 'capturing') return 'READING'
-		if (this.mode === 'holding') return 'PRESS A SLOT'
+		if (this.mode === 'holding') return `${this.held.length} CH: PRESS SLOT`
 		if (this.namesRec) return this.namesCount() ? `${this.namesCount()} NAMES` : 'TAP SOLOS'
 		if (this.scriptHeld) return 'PRESS A SCRIPT'
 		if (this.scriptRec) return `SCRIPT REC ${this.scriptRec.steps.length}`
@@ -614,7 +654,7 @@ export class Engine {
 			targetMode: this.targetMode,
 			touched: this.lastTouched,
 			touchedLabel: this.touchedLabel(),
-			held: this.held ? describe(this.held.section, this.held.index, this.held.name) : '',
+			held: this.held.length ? describeChannels(this.held) : '',
 			scriptRecording: !!this.scriptRec,
 			scriptSteps: this.scriptRec ? this.scriptRec.steps.length : this.scriptHeld ? this.scriptHeld.length : 0,
 			scriptHeld: !!this.scriptHeld,

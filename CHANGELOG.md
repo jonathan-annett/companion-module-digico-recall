@@ -29,6 +29,11 @@ Nothing yet.
 
 ### Changed
 
+- A capture can now hold several channels. Press CAPTURE, touch as many channels as you
+  like, then press a slot; recalling the slot sends the lit scopes to every channel in it.
+  A multi-channel capture always returns to its own channels, whatever the recall target
+  is set to. The web page lists and edits each channel in a capture. Libraries saved by
+  0.1.0 (one channel per slot) are read and converted automatically.
 - Saving names now works like capturing a channel. Press SAVE NAMES, tap solo on each
   channel whose name you want, then press a name set button to store the list. The same
   button restores it later, writing back only the names in the list. ALL NAMES adds every

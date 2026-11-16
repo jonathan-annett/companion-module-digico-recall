@@ -19,17 +19,19 @@ const list = (value) => [].concat(value ?? []).map(String)
 /** @param {{engine: import('./engine.js').Engine | null}} self */
 export function getActions(self) {
 	const e = () => self.engine
-	const canCapture = () => e() && (e().mode === 'idle' || e().mode === 'armed')
+	// Adding a channel is allowed whenever names aren't being collected; a capture can hold several
+	const canCapture = () => e() && !e().namesRec
 
 	return {
 		arm: {
-			name: 'Capture: arm (next touched channel is read)',
-			description: 'Press, then nudge a fader or hit solo on the channel you want. Press again to cancel.',
+			name: 'Capture: arm (each touched channel is read)',
+			description:
+				'Press, then nudge a fader or hit solo on each channel you want, then press a slot. Press again to cancel.',
 			options: [],
 			callback: async () => e()?.toggleArm(),
 		},
 		capture: {
-			name: 'Capture: read a specific channel',
+			name: 'Capture: add a specific channel',
 			options: [
 				{ type: 'dropdown', id: 'section', label: 'Type', default: 'Input_Channels', choices: SECTION_CHOICES },
 				{ type: 'number', id: 'index', label: 'Number', default: 1, min: 1, max: 512 },
@@ -39,7 +41,7 @@ export function getActions(self) {
 			},
 		},
 		capture_touched: {
-			name: 'Capture: read the last touched channel',
+			name: 'Capture: add the last touched channel',
 			options: [],
 			callback: async () => {
 				const t = e()?.lastTouched

@@ -178,7 +178,12 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		var s = sections()[item.section]
 		return (s ? s.short : item.section) + ' ' + item.index + (item.name ? ' ' + item.name : '')
 	}
-	function slotTitle(snap) { return snap.label || where(snap) }
+	function channelsTitle(channels) {
+		if (channels.length === 1) return where(channels[0])
+		if (channels.length <= 3) return channels.map(function (c) { return c.name || where(c) }).join(', ')
+		return channels.length + ' channels'
+	}
+	function slotTitle(slot) { return slot.label || channelsTitle(slot.channels) }
 	function when(iso) {
 		var d = new Date(iso)
 		return isNaN(d) ? '' : d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -268,34 +273,41 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		api(path, { id: id, value: null }).then(function () { S.draft = null; return reload(true) }).then(function () { toast('Deleted') }).catch(fail)
 	}
 
+	function slotValueCount(slot) {
+		return slot.channels.reduce(function (n, c) { return n + Object.keys(c.values).length }, 0)
+	}
+
 	function viewSlots() {
 		var list = h('div', { class: 'list' }, ids('slots', S.status.slotCount).map(function (id) {
-			var snap = S.lib.slots[id]
-			return h('div', { class: 'row' + (snap ? '' : ' empty') + (S.sel.slots === id ? ' on' : ''), onclick: function () { select('slots', id) } },
+			var slot = S.lib.slots[id]
+			return h('div', { class: 'row' + (slot ? '' : ' empty') + (S.sel.slots === id ? ' on' : ''), onclick: function () { select('slots', id) } },
 				h('span', { class: 'num' }, id),
-				h('span', { class: 'what' }, snap ? slotTitle(snap) : 'empty'),
-				snap ? h('span', { class: 'meta' }, Object.keys(snap.values).length) : null)
+				h('span', { class: 'what' }, slot ? slotTitle(slot) : 'empty'),
+				slot ? h('span', { class: 'meta' }, slot.channels.length > 1 ? slot.channels.length + ' ch' : slotValueCount(slot)) : null)
 		}))
 		var d = S.draft, id = S.sel.slots, detail
 		if (!id) {
 			detail = h('div', { class: 'empty-state' }, 'Pick a slot on the left. Captures made from the Stream Deck show up here within a few seconds.')
 		} else if (!d) {
-			detail = h('div', { class: 'empty-state' }, 'Slot ' + id + ' is empty. Arm capture on the Stream Deck, touch a channel, then press slot ' + id + '.')
+			detail = h('div', { class: 'empty-state' }, 'Slot ' + id + ' is empty. Press CAPTURE on the Stream Deck, touch one or more channels, then press slot ' + id + '.')
 		} else {
 			var dirty = function () { setDirty(true) }
 			var checks = {}
 			var present = {}
-			Object.keys(d.values).forEach(function (s) { present[scopeOf(s)] = true })
+			d.channels.forEach(function (c) { Object.keys(c.values).forEach(function (s) { present[scopeOf(s)] = true }) })
 			var copyTo = h('input', { class: 'n', type: 'number', min: 1, max: 999, placeholder: 'slot' })
+			var many = d.channels.length > 1
 			detail = [
 				h('h2', {}, 'Capture ' + id + ' · ' + slotTitle(d)),
-				h('p', { class: 'sub' }, 'Read from ' + where(S.lib.slots[id]) + (d.when ? ' on ' + when(d.when) : '')),
+				h('p', { class: 'sub' }, d.channels.length + (many ? ' channels, ' : ' channel, ') + slotValueCount(d) + ' values' + (d.when ? ' · captured ' + when(d.when) : '')),
 				h('div', { class: 'bar' },
-					h('label', { class: 'f' }, 'Button label', h('input', { value: d.label || '', placeholder: where(d),
-						oninput: function (e) { d.label = e.target.value; dirty() } })),
-					targetFields(d, dirty)),
+					h('label', { class: 'f' }, 'Button label', h('input', { value: d.label || '', placeholder: channelsTitle(d.channels),
+						oninput: function (e) { d.label = e.target.value; dirty() } }))),
 				h('div', { class: 'bar' },
-					h('button', { class: 'b', id: 'save', onclick: function () { save('slots', 'api/slot') } }, 'Save changes'),
+					h('button', { class: 'b', id: 'save', onclick: function () {
+						if (!d.channels.length) return fail(new Error('A capture needs at least one channel. Use Delete to remove it.'))
+						save('slots', 'api/slot')
+					} }, 'Save changes'),
 					copyTo,
 					h('button', { class: 'b', onclick: function () {
 						var to = String(Math.trunc(Number(copyTo.value)))
@@ -308,13 +320,21 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 					h('button', { class: 'b', onclick: function () {
 						if (S.dirty) return fail(new Error('Save your changes first'))
 						var on = Object.keys(checks).filter(function (k) { return checks[k].checked })
-						api('api/slot/recall', { id: id, scopes: on }).then(function (r) { toast('Sent ' + r.sent + ' values to ' + where(d)) }).catch(fail)
+						api('api/slot/recall', { id: id, scopes: on }).then(function (r) { toast('Sent ' + r.sent + ' values to ' + channelsTitle(d.channels)) }).catch(fail)
 					} }, 'Send to console now'),
 					scopeList().filter(function (s) { return present[s.id] }).map(function (s) {
 						checks[s.id] = h('input', { type: 'checkbox', checked: (S.status.scopes_on || []).indexOf(s.id) >= 0 })
 						return h('label', {}, checks[s.id], ' ' + s.label)
 					})),
-				valueGroups(d.values, dirty),
+				d.channels.map(function (channel, i) {
+					return h('details', { open: !many },
+						h('summary', {}, where(channel),
+							h('span', { class: 'count' }, Object.keys(channel.values).length + ' values'),
+							h('span', { class: 'grow' }),
+							many ? h('button', { class: 'x', title: 'Remove this channel from the capture', onclick: function (e) { e.preventDefault(); d.channels.splice(i, 1); dirty(); render() } }, '×') : null),
+						h('div', { class: 'bar', style: 'padding: 0 12px' }, targetFields(channel, dirty)),
+						h('div', { style: 'padding: 0 12px 4px' }, valueGroups(channel.values, dirty)))
+				}),
 				h('p', { class: 'note' }, 'Values are shown exactly as the console reports them: levels and gains in dB, frequencies in Hz, times in seconds, switches as 0 or 1.'),
 			]
 		}

@@ -114,3 +114,17 @@ console and network.
 - Moved the tests to Node's built-in runner and added the behaviour and SDK test files:
   39 tests in total.
 - Not yet done: any run inside Companion, or against DiGiCo software or a console.
+
+### 2026-11-16: first contact with the offline software, 0.1.1 in progress
+
+- First import into Companion and first connection to the Quantum 338 offline software.
+  Everything found is in the findings table in TESTING.md.
+- Setup was the hard part (firewall, "Enable External Control", loading the iPad command
+  set), so the web page gained a Setup tab that works out the values from the console's
+  address, and the settings page shows the console's device row.
+- The maintainer suggested saving names by tapping channels rather than all at once, then
+  that captures themselves should work the same way. Both adopted: one consistent gesture
+  (press the button, touch channels, press where it goes). A slot now holds a list of
+  channels. The stored format changed, with conversion of 0.1.0 libraries on load.
+- Because a fader move arrives as many messages, a channel already in the capture, or
+  being read, is not read again.
