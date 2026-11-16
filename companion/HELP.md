@@ -146,6 +146,11 @@ Or open `http://<companion address>:<port>/instance/<this connection's label>/`
   changed. Load names from a slot, or save the grid to one.
 - **Log**: the audit trail, live. See Log above.
 - **Library**: download everything as one file, or replace it from a file.
+- **Keys**: the keys themselves, live. Tap them as you would a Stream Deck; hold CAPTURE
+  for two seconds to clear a slot. Use it on a tablet, phone or laptop with no Stream Deck
+  and nothing set up in Companion. "Show only the keys" hides the rest of the page; that
+  address (ending `#keys`) can be bookmarked on a tablet. Which keys, and how many across
+  and down, is chosen on the Buttons tab and remembered by each device.
 - **Buttons**: makes a whole page of buttons for this connection. Choose your deck (Stream
   Deck XL, MK.2, +, Mini, a tablet, or any size), tick the keys you want, check the
   preview and download the file. In Companion use Import / Export, Import, and link the

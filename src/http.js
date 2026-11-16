@@ -1,6 +1,7 @@
 import { SECTIONS, SECTION_IDS, SCOPES, SCOPE_IDS } from './params.js'
 import { buildPageExport, planLayout, CONTROL_KEYS, SCOPE_KEYS, DECKS, LAYOUT_DEFAULTS } from './layout.js'
 import { VERSION } from './version.js'
+import { liveKeys, pressKey } from './keys.js'
 import { KINDS } from './engine.js'
 import { cleanSlot, cleanNames, cleanLibrary, namesToSteps } from './validate.js'
 import { PAGE } from './webui.js'
@@ -77,6 +78,11 @@ export async function handleHttp(self, request) {
 			return json({ ok: true })
 		}
 
+		if (path === '/api/keys') return json(liveKeys(self, body)) // the web page's own live keys
+		if (path === '/api/keys/press') {
+			await pressKey(self, body.key, Number(body.held) || 0)
+			return json(liveKeys(self, body.layout ?? {}))
+		}
 		if (path === '/api/layout') {
 			// A page of buttons for this connection, as a file Companion can import
 			const plan = planLayout(body, Number(self.config.slotCount))

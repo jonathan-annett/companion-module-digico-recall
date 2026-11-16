@@ -314,6 +314,52 @@ await test('Buttons tab: the web API plans a page and returns a file to import, 
 	assert.match(refused.data.error, /do not fit/)
 })
 
+await test('Keys tab: live keys show what a Stream Deck would, and pressing them runs the same actions', async () => {
+	const layout = { columns: 4, rows: 2, keys: ['arm', 'cancel', 'target', 'scope_eq'] }
+	const read = async () => (await http('POST', '/api/keys', layout)).data
+	const key = (page, id) => page.keys.flat().find((k) => k?.id === id)
+	await run('cancel')
+	await run('scopes', { scopes: ['eq'] })
+	let page = await read()
+	assert.deepEqual([page.columns, page.rows], [4, 2])
+	assert.deepEqual(
+		page.keys.map((row) => row.map((k) => k.id)),
+		[
+			['slot_1', 'slot_2', 'slot_3', 'slot_4'],
+			['arm', 'cancel', 'target', 'scope_eq'],
+		],
+	)
+	// Text is the preset's text with the variables filled in; colours follow the feedbacks
+	assert.deepEqual(key(page, 'slot_1').lines, ['1', mod.engine.slotLabel(1)])
+	assert.deepEqual(key(page, 'arm').lines, ['CAPTURE', 'READY'])
+	assert.deepEqual([key(page, 'arm').bgcolor, key(page, 'scope_eq').bgcolor], ['#282828', '#dc8c00'])
+	assert.deepEqual(key(page, 'arm').hold, [2000])
+	assert.notEqual(
+		key(page, 'slot_1').bgcolor,
+		key(page, 'slot_4').bgcolor,
+		'a used slot is coloured, an empty one is not',
+	)
+
+	// A press answers with the page as it now is
+	page = (await http('POST', '/api/keys/press', { key: 'arm', layout })).data
+	assert.equal(mod.engine.mode, 'armed')
+	assert.deepEqual([key(page, 'arm').lines[1], key(page, 'arm').bgcolor], ['TOUCH A CHANNEL', '#c80000'])
+	page = (await http('POST', '/api/keys/press', { key: 'scope_eq', layout })).data
+	assert.equal(key(page, 'scope_eq').bgcolor, '#282828')
+	assert.equal(fb('scope', { scope: 'eq' }), false)
+	await http('POST', '/api/keys/press', { key: 'cancel', layout })
+	assert.equal(mod.engine.mode, 'idle')
+
+	// Held for two seconds, CAPTURE arms clearing, as on the Stream Deck
+	page = (await http('POST', '/api/keys/press', { key: 'arm', held: 2000, layout })).data
+	assert.equal(mod.engine.clearMode, true)
+	assert.equal(key(page, 'arm').bgcolor, '#ffffff')
+	await run('cancel')
+	await run('scopes', { scopes: ['eq'] })
+	assert.equal((await http('POST', '/api/keys/press', { key: 'nope', layout })).status, 400)
+	assert.equal((await http('POST', '/api/keys/press', { key: 'cancel', held: 2000, layout })).status, 400)
+})
+
 await test('web page and API: browse, edit a value, rename, send, names, import', async () => {
 	const page = await http('GET', '/')
 	assert.equal(page.status, 200)

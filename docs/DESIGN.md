@@ -313,3 +313,26 @@ console and network.
   version, and a generated file has not yet been imported. M31 and M32 cover that.
 - A settings-page button was considered. The settings page cannot offer a download, so
   the generator lives on the web page, which the settings page already links to.
+
+### 2026-11-17: live keys in the web page, 0.2.7
+
+- The generated page imported into Companion 5.1.1 and worked (M31). The maintainer then
+  pointed out that a tablet has no need of Companion's emulator at all: the module's own
+  web page can show the keys and press them.
+- `src/keys.js` does it without a second implementation of anything. For each key in the
+  plan it takes the preset, fills the variables into its text, runs its feedbacks to get
+  the colours, and on a press runs its actions, using `getVariableValues`,
+  `getFeedbacks` and `getActions`, the functions Companion itself is given. A key on the
+  web page and the same key on a Stream Deck therefore cannot disagree.
+- The browser asks for the page every 400 ms and after each press; a press answers with
+  the new page, so the key responds at once. No page keys: a web page has no Companion
+  pages to turn.
+- Holding: the browser sends the press on touch-down, as a Stream Deck does, and the
+  preset's held actions after the preset's own delay if the finger is still down.
+- Layout choices are shared with the Buttons tab and kept in the browser's storage, so
+  each device keeps its own. `#keys` on the address shows the keys alone.
+- No sign-in: anyone who can open Companion's web address can press the keys, exactly as
+  with Companion's own web buttons.
+- The maintainer's suggestion named the proxy. The keys belong to the recall module,
+  which holds the captures; they work whether it talks to the console directly or
+  through the proxy.

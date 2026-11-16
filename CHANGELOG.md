@@ -9,11 +9,22 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 Nothing yet.
 
-## [0.2.6] - unreleased
+## [0.2.7] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.5 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.6 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.6:
+
+- **Live keys on the web page.** A new Keys tab shows the chosen keys and works them
+  directly: tap to press, hold CAPTURE for two seconds to clear, colours and texts update
+  as on a Stream Deck. A tablet, phone or laptop can run the module with no Stream Deck
+  and no page set up in Companion. "Show only the keys" (the page address ending in
+  `#keys`) hides everything else, for a tablet left at the desk. The keys are the presets
+  themselves, drawn and pressed through the same code Companion uses, so they cannot
+  behave differently. The choice of size and keys is made on the Buttons tab and is
+  remembered by each browser.
 
 Since test build 0.2.5:
 

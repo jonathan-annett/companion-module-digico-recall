@@ -49,6 +49,13 @@ main { flex: 1; min-height: 0; display: flex; }
 .detail { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px 60px; }
 .detail h2 { margin: 0 0 4px; font-size: 18px; }
 .sub { color: var(--dim); margin: 0 0 16px; font-size: 13px; }
+.livekeys { display: grid; gap: 6px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.livekey { border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: pre-line; font-weight: 600; line-height: 1.2; overflow: hidden; cursor: pointer; padding: 2px; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.livekey.down { filter: brightness(1.5); transform: scale(.96); }
+.livekey.none { background: transparent; cursor: default; }
+.keysview { overflow: auto; }
+.keysview a { color: var(--dim); }
+body.kiosk header, body.kiosk nav { display: none; }
 .pick { margin-right: 10px; white-space: nowrap; }
 .deck { display: grid; gap: 6px; margin: 6px 0 14px; }
 .deck .key { height: 64px; border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font: 600 11px var(--sans, sans-serif); background: #282828; color: #fff; padding: 2px; }
@@ -129,7 +136,7 @@ table.log .was { color: var(--dim); }
 	var base = location.pathname.replace(/\/?$/, '/')
 	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null }, draft: null, dirty: false,
 		names: { section: 'Input_Channels', live: {}, edit: {}, slotId: '' } }
-	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['log', 'Log'], ['library', 'Library'], ['buttons', 'Buttons'], ['setup', 'Setup']]
+	var TABS = [['keys', 'Keys'], ['slots', 'Slots'], ['names', 'Names'], ['log', 'Log'], ['library', 'Library'], ['buttons', 'Buttons'], ['setup', 'Setup']]
 
 	function h(tag, attrs) {
 		var el = document.createElement(tag)
@@ -534,8 +541,18 @@ table.log .was { color: var(--dim); }
 	// A page of buttons to import into Companion: choose the size and the keys, see where
 	// they land, download the file.
 	var BTN = { opts: null, plan: null, file: null, filename: '', error: '', busy: false }
+	// The choices are kept in this browser, so a tablet opens with its own layout
+	function loadOpts() {
+		if (BTN.opts) return
+		try { BTN.opts = JSON.parse(localStorage.getItem('digico-recall-layout')) } catch (e) { BTN.opts = null }
+		if (!BTN.opts || !Array.isArray(BTN.opts.keys)) BTN.opts = clone(S.status.layout.defaults)
+	}
+	function saveOpts() {
+		try { localStorage.setItem('digico-recall-layout', JSON.stringify(BTN.opts)) } catch (e) { /* private browsing: not kept */ }
+	}
 	function planButtons() {
 		BTN.busy = true
+		saveOpts()
 		return api('api/layout', BTN.opts).then(function (r) {
 			BTN.plan = r.plan; BTN.file = r.file; BTN.filename = r.filename; BTN.error = ''
 		}, function (e) { BTN.plan = null; BTN.file = null; BTN.error = e.message })
@@ -543,8 +560,8 @@ table.log .was { color: var(--dim); }
 	}
 	function viewButtons() {
 		var L = S.status.layout
-		if (!BTN.opts) {
-			BTN.opts = clone(L.defaults)
+		if (!BTN.plan && !BTN.busy && !BTN.error) {
+			loadOpts()
 			planButtons()
 		}
 		var o = BTN.opts
@@ -579,7 +596,7 @@ table.log .was { color: var(--dim); }
 		var slots = BTN.plan ? BTN.plan.slots : []
 		return h('div', { class: 'detail' },
 			h('h2', {}, 'Buttons'),
-			h('p', { class: 'sub' }, 'Makes a page of buttons for this connection as a file to import into Companion.'),
+			h('p', { class: 'sub' }, 'Choose a size and the keys you want. The Keys tab shows them live, to use straight from this page; or download them as a page to import into Companion for a Stream Deck.'),
 			h('div', { class: 'bar' }, 'Page size ', size,
 				BTN.custom || !deck ? h('span', {}, ' ', num('columns', 2, 20), ' across, ', num('rows', 1, 10), ' down') : null,
 				h('label', { class: 'pick' }, h('input', { type: 'checkbox', checked: o.nav, onchange: function (e) { set('nav', e.target.checked) } }), ' Page up / down keys'),
@@ -597,6 +614,103 @@ table.log .was { color: var(--dim); }
 					document.body.appendChild(a); a.click(); a.remove()
 				} }, 'Download page file')),
 			h('p', { class: 'note' }, 'In Companion: Import / Export, Import, choose the file, pick the page to put it on, and when asked about the connection choose this one ("' + S.status.label + '") rather than making a new one. The file holds buttons only: no console address and none of your captures. Any key can also be dragged from the Presets tab instead.'))
+	}
+
+	// ---- keys ----------------------------------------------------------------------
+
+	// The chosen keys, live: drawn from the module's state and pressed from here, so a
+	// tablet or laptop needs no Stream Deck and no page in Companion.
+	var KEYS = { data: null, sig: '', error: '', down: null, timer: null }
+	var kiosk = location.hash === '#keys' // just the keys, for a tablet left on this page
+	function keyFont(lines, px) {
+		var longest = Math.max.apply(null, lines.map(function (l) { return l.length }).concat([1]))
+		// bold sans is about 0.62 em a letter: fit the longest line across, and the lines down
+		return Math.max(7, Math.min((px * 0.9) / (longest * 0.62), (px * 0.84) / (lines.length * 1.2), px * 0.24))
+	}
+	function drawKeys() {
+		var box = $('keys')
+		if (!box || !KEYS.data) return
+		var d = KEYS.data
+		var sig = d.columns + 'x' + d.rows + ':' + d.keys.map(function (row) { return row.map(function (k) { return k ? k.id : '' }).join(',') }).join(';')
+		var gap = 6
+		var top = box.getBoundingClientRect().top
+		var px = Math.floor(Math.min((box.clientWidth - gap * (d.columns - 1)) / d.columns, (window.innerHeight - top - 40 - gap * (d.rows - 1)) / d.rows))
+		px = Math.max(30, Math.min(px, 220))
+		if (sig !== KEYS.sig || box.children.length === 0 || KEYS.px !== px) {
+			KEYS.sig = sig; KEYS.px = px
+			box.textContent = ''
+			box.style.gridTemplateColumns = 'repeat(' + d.columns + ', ' + px + 'px)'
+			d.keys.forEach(function (row) {
+				row.forEach(function (k) {
+					var el = h('div', { class: 'livekey' + (k ? '' : ' none'), style: 'height:' + px + 'px' })
+					if (k) {
+						el.dataset.key = k.id
+						el.addEventListener('pointerdown', function (e) { e.preventDefault(); keyDown(k.id) })
+						el.addEventListener('contextmenu', function (e) { e.preventDefault() })
+					}
+					box.appendChild(el)
+				})
+			})
+		}
+		var i = 0
+		d.keys.forEach(function (row) {
+			row.forEach(function (k) {
+				var el = box.children[i++]
+				if (!k) return
+				var text = k.lines.join('\n')
+				if (el.textContent !== text) el.textContent = text
+				el.style.background = k.bgcolor
+				el.style.color = k.color
+				el.style.fontSize = keyFont(k.lines, px) + 'px'
+				el.className = 'livekey' + (KEYS.down === k.id ? ' down' : '')
+			})
+		})
+	}
+	function keyOf(id) {
+		var found = null
+		KEYS.data.keys.forEach(function (row) { row.forEach(function (k) { if (k && k.id === id) found = k }) })
+		return found
+	}
+	function showKeys(d) { KEYS.data = d; KEYS.error = ''; drawKeys() }
+	function keyDown(id) {
+		keyUp()
+		KEYS.down = id
+		drawKeys()
+		api('api/keys/press', { key: id, layout: BTN.opts }).then(showKeys).catch(fail)
+		// Like a Stream Deck key: some do more once held (CAPTURE, two seconds, to clear a slot)
+		var k = keyOf(id)
+		if (k && k.hold.length) {
+			KEYS.timer = setTimeout(function () {
+				if (KEYS.down === id) api('api/keys/press', { key: id, held: k.hold[0], layout: BTN.opts }).then(showKeys).catch(fail)
+			}, k.hold[0])
+		}
+	}
+	function keyUp() {
+		if (KEYS.timer) clearTimeout(KEYS.timer)
+		KEYS.timer = null
+		if (KEYS.down) { KEYS.down = null; drawKeys() }
+	}
+	window.addEventListener('pointerup', keyUp)
+	window.addEventListener('pointercancel', keyUp)
+	window.addEventListener('resize', drawKeys)
+	function pollKeys() {
+		if (S.tab !== 'keys' || !S.status) return Promise.resolve()
+		loadOpts()
+		return api('api/keys', BTN.opts).then(showKeys, function (e) {
+			if (KEYS.error !== e.message) { KEYS.error = e.message; render() }
+		})
+	}
+	function viewKeys() {
+		loadOpts()
+		setTimeout(function () { drawKeys(); pollKeys() }, 0)
+		return h('div', { class: 'detail keysview' },
+			kiosk ? null : h('p', { class: 'sub' },
+				'Press these as you would the keys on a Stream Deck. Size and keys are chosen on the Buttons tab. ',
+				h('a', { href: '#keys', onclick: function () { setTimeout(function () { location.reload() }, 0) } }, 'Show only the keys'),
+				' (for a tablet; bookmark that page).'),
+			KEYS.error ? h('p', { class: 'note', style: 'color:var(--bad)' }, KEYS.error + ' Change the choices on the Buttons tab.') : null,
+			h('div', { id: 'keys', class: 'livekeys' }),
+			kiosk ? h('p', { class: 'note' }, h('a', { href: '#', onclick: function () { setTimeout(function () { location.reload() }, 0) } }, 'Show the whole page')) : null)
 	}
 
 	// ---- log -----------------------------------------------------------------------
@@ -812,7 +926,7 @@ table.log .was { color: var(--dim); }
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
 		if (!S.status || !S.lib) { add(main, h('div', { class: 'detail' }, h('div', { class: 'empty-state' }, 'Loading…'))); return }
-		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'log' ? viewLog() : S.tab === 'setup' ? viewSetup() : S.tab === 'buttons' ? viewButtons() : viewLibrary())
+		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'log' ? viewLog() : S.tab === 'setup' ? viewSetup() : S.tab === 'buttons' ? viewButtons() : S.tab === 'keys' ? viewKeys() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
 		if (typingFilter && $('logfilter')) {
@@ -850,8 +964,11 @@ table.log .was { color: var(--dim); }
 		})
 	}
 
+	if (kiosk) document.body.className = 'kiosk'
+	setInterval(function () { pollKeys().catch(function () {}) }, 400)
 	loadStatus().then(function () {
-		if (!S.status.online) S.tab = 'setup' // nothing else is useful until the console answers
+		if (kiosk) S.tab = 'keys'
+		else if (!S.status.online) S.tab = 'setup' // nothing else is useful until the console answers
 		return reload(true)
 	}).catch(fail)
 	setInterval(function () {

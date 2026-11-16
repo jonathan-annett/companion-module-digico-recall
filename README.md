@@ -12,7 +12,7 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 76 automated tests against a
+**0.x are test releases.** The logic is covered by 77 automated tests against a
 simulated console. It has been connected to the Quantum 338 offline software, but the
 manual test plan has not yet been run there or on a console. The parameter names have
 been checked against DiGiCo's own iPad command sets for Quantum 338, SD5/SD7/SD10 and
