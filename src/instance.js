@@ -75,6 +75,8 @@ export function makeInstanceClass({ InstanceBase, InstanceStatus }) {
 					rate: Number(c.rate) || DEFAULTS.rate,
 					queryTimeout: Number(c.queryTimeout) || DEFAULTS.queryTimeout,
 					learn: !!c.learn,
+					audit: !!c.audit,
+					auditFolder: String(c.auditFolder ?? ''),
 				},
 				{
 					onChange: () => this.scheduleRefresh(),

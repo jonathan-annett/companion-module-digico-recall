@@ -87,8 +87,13 @@ let mod = new Instance({})
 await mod.init(config)
 const run = (id, options = {}) => mod.actions[id].callback({ options })
 const fb = (id, options = {}) => mod.feedbacks[id].callback({ options })
-const http = async (method, path, body) => {
-	const res = await mod.handleHttpRequest({ method, path, body: body === undefined ? undefined : JSON.stringify(body) })
+const http = async (method, path, body, query = {}) => {
+	const res = await mod.handleHttpRequest({
+		method,
+		path,
+		query,
+		body: body === undefined ? undefined : JSON.stringify(body),
+	})
 	return {
 		status: res.status,
 		data: res.headers['Content-Type'].startsWith('application/json') ? JSON.parse(res.body) : res.body,
@@ -359,6 +364,38 @@ await test('web setup: resolve shows what to enter on the console; apply saves t
 	assert.equal(Object.keys(mod.engine.lib.slots).length, slots, 'library kept across the reconnect')
 	await until(() => mod.engine.consoleName === 'SimQuantum', 'reconnected')
 	assert.ok((await http('GET', '/')).data.includes('data:image/png;base64,'), 'setup picture is in the page')
+})
+
+await test('audit log: the LOG button switches it on, the web page reads new entries, and clear empties it', async () => {
+	assert.equal(fb('audit_on'), false)
+	assert.equal((await http('GET', '/api/log')).data.enabled, false)
+	await run('audit', { mode: 'toggle' })
+	assert.equal(fb('audit_on'), true)
+	await until(() => mod.vars.audit === 'ON', 'LOG button text')
+
+	sim.surface('/Input_Channels/9/fader', 'f', [-2.5])
+	await until(() => mod.engine.audit.entries.some((e) => e.parameter === 'fader'), 'change logged')
+	await until(() => /In 9.* fader -2\.5$/.test(mod.vars.audit_last), 'latest change on the button')
+	const first = (await http('GET', '/api/log')).data
+	assert.equal(first.enabled, true)
+	const change = first.entries.find((e) => e.parameter === 'fader')
+	assert.equal(change.to, '-2.5')
+	assert.ok(Math.abs(change.t - Date.now()) < 5000, 'timestamped as it arrived')
+
+	// Asking again from where the page got to returns only what is new
+	assert.equal((await http('GET', '/api/log', undefined, { since: String(first.seq) })).data.entries.length, 0)
+	sim.surface('/Input_Channels/10/mute', 'f', [1])
+	await until(() => mod.engine.audit.seq > first.seq, 'another change')
+	const next = (await http('GET', '/api/log', undefined, { since: String(first.seq) })).data
+	assert.deepEqual(
+		next.entries.map((e) => e.parameter),
+		['mute'],
+	)
+
+	await http('POST', '/api/log/clear', {})
+	assert.equal((await http('GET', '/api/log')).data.entries.length, 0)
+	assert.equal((await http('POST', '/api/log/enable', { on: false })).data.enabled, false)
+	assert.equal(fb('audit_on'), false)
 })
 
 await test('library survives a restart and a config edit', async () => {

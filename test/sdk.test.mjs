@@ -110,6 +110,7 @@ test('presets only use actions, feedbacks, options and variables that exist', ()
 	// Fixed-size labels must fit on one line: Companion wraps five letters at size 18
 	for (const [id, preset] of Object.entries(presets)) {
 		if (preset.style.size === 'auto') continue
+		if (preset.style.text.includes('$(')) continue // variable text: its length isn't known here
 		const longest = Math.max(...preset.style.text.split('\\n').map((line) => line.length))
 		assert.ok(
 			Number(preset.style.size) * longest <= 72,

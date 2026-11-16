@@ -3,7 +3,8 @@
 A [Bitfocus Companion](https://bitfocus.io/companion) module for DiGiCo SD and Quantum
 consoles. Capture a whole channel with one button, put back only the parts you choose
 (EQ, COMP, GATE, LEVEL, AUX, GAIN and more), chain recalls into scripts, save and restore
-channel names, and browse or edit all of it in a web page.
+channel names, and browse or edit all of it in a web page. An optional audit log records every
+change the console reports, with a timestamp.
 
 See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
@@ -11,7 +12,7 @@ See [HELP.md](./companion/HELP.md) for how to use it and [LICENSE](./LICENSE).
 
 ## Status
 
-**0.x are test releases.** The logic is covered by 50 automated tests against a
+**0.x are test releases.** The logic is covered by 55 automated tests against a
 simulated console. It has not yet been run against DiGiCo software or a console. The
 address list comes from open-source observation of the iPad app and needs confirming on
 each console. Progress is tracked in the [test log](docs/TESTING.md#3-test-log).

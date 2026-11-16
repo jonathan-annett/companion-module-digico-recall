@@ -102,6 +102,17 @@ export function getPresets(label, config) {
 		[fb('names_recording', {}, amber)],
 	)
 
+	// Log: the audit trail
+	button(
+		'audit',
+		'Log',
+		'Audit log on / off',
+		`LOG\\n${v('audit')}`,
+		[act('audit', { mode: 'toggle' })],
+		[fb('audit_on')],
+	)
+	button('audit_last', 'Log', 'Latest change', v('audit_last'), [], [fb('audit_on')], '7')
+
 	// One kind of slot. Its colour says what it holds; yellow text marks the last one recalled.
 	for (const i of ids(config.slotCount)) {
 		button(

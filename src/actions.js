@@ -129,6 +129,28 @@ export function getActions(self) {
 			options: [],
 			callback: async () => e()?.setClearMode(true),
 		},
+		audit: {
+			name: 'Audit log: on / off',
+			description: 'Records every change the console reports, with the time. See the Log tab of the web page.',
+			options: [
+				{
+					type: 'dropdown',
+					id: 'mode',
+					label: 'Action',
+					default: 'toggle',
+					choices: [
+						{ id: 'toggle', label: 'Toggle' },
+						{ id: 'on', label: 'On' },
+						{ id: 'off', label: 'Off' },
+					],
+				},
+			],
+			callback: async (action) => {
+				if (!e()) return
+				const mode = String(action.options.mode)
+				e().audit.setEnabled(mode === 'toggle' ? !e().audit.enabled : mode === 'on')
+			},
+		},
 		cancel: {
 			name: 'Cancel capture / script recording / saving names',
 			options: [],

@@ -12,9 +12,18 @@ import {
 	describe,
 } from './params.js'
 import { namesToSteps } from './validate.js'
+import { AuditLog } from './audit.js'
 
 const ECHO_WINDOW_MS = 1500
 const STATUS_POLL_MS = 5000
+
+function uniqueTargets(targets) {
+	const seen = new Set()
+	return targets.filter((t) => {
+		const key = `${t.section}/${t.index}`
+		return seen.has(key) ? false : seen.add(key)
+	})
+}
 
 /** Short text for a slot button, from what the slot holds. */
 export function describeSlot(slot) {
@@ -77,9 +86,22 @@ export class Engine {
 	 * @param {object} hooks  onChange(), persist(lib), log(level, text), onStatus(ok, text), onRaw(buf)
 	 */
 	constructor(cfg, hooks = {}) {
-		this.cfg = { rate: 500, queryTimeout: 400, learn: false, clearTimeout: 10000, ...cfg }
+		this.cfg = {
+			rate: 500,
+			queryTimeout: 400,
+			learn: false,
+			clearTimeout: 10000,
+			audit: false,
+			auditFolder: '',
+			...cfg,
+		}
 		this.hooks = hooks
 		this.lib = emptyLibrary()
+		this.audit = new AuditLog({
+			folder: this.cfg.auditFolder,
+			log: (level, text) => this.log(level, text),
+			onChange: () => this.changed(),
+		})
 		this.scopes = new Set(['eq'])
 		this.armed = false // true from pressing capture until a slot is pressed or it is cancelled
 		this.pending = 0 // channel reads in progress
@@ -121,6 +143,7 @@ export class Engine {
 			log: this.hooks.log,
 		})
 		this.transport.start()
+		this.audit.setEnabled(this.cfg.audit)
 		this.refreshConsole()
 		this.pollTimer = setInterval(() => this.poll(), STATUS_POLL_MS)
 	}
@@ -131,6 +154,7 @@ export class Engine {
 		if (this.clearTimer) clearTimeout(this.clearTimer)
 		this.clearTimer = null
 		if (this.batch) this.batch.finish()
+		this.audit.stop()
 		await this.transport?.close()
 		this.transport = null
 	}
@@ -141,6 +165,7 @@ export class Engine {
 		this.online = Date.now() - this.lastReply < STATUS_POLL_MS * 2 + 1000
 		if (wasOnline !== this.online) {
 			this.hooks.onStatus?.(this.online, this.online ? 'Connected' : 'No reply from console')
+			this.audit.event(this.online ? 'Console connected' : 'No reply from console')
 			this.changed()
 		}
 		this.transport.query('/Console/Name')
@@ -181,13 +206,17 @@ export class Engine {
 		this.lastReply = Date.now()
 		if (!this.online) {
 			this.online = true
+			this.audit.event(`Console connected${this.consoleName ? `: ${this.consoleName}` : ''}`)
 			this.hooks.onStatus?.(true, 'Connected')
 			this.changed()
 		}
 
 		// Reply to one of our own queries?
 		if (this.batch && this.batch.want.has(m.path)) {
-			if (m.args.length) this.batch.take(m)
+			if (m.args.length) {
+				this.audit.note(m.path, m.args)
+				this.batch.take(m)
+			}
 			return
 		}
 
@@ -205,8 +234,20 @@ export class Engine {
 		}
 
 		const addr = parseAddress(m.path)
-		if (!addr || !m.args.length) return
-		if (/meter/i.test(addr.suffix)) return
+		if (!m.args.length || /meter/i.test(m.path)) return
+		if (!addr) {
+			// Not a channel: a snapshot firing, a macro, a layout change. Worth a line in the log.
+			if (!m.path.startsWith('/Console/')) {
+				const parts = m.path.split('/').filter(Boolean)
+				this.audit.change({
+					address: m.path,
+					channel: parts[0] ?? '',
+					parameter: parts.slice(1).join('/'),
+					args: m.args,
+				})
+			}
+			return
+		}
 
 		if (addr.suffix === SECTIONS[addr.section].name && typeof m.args[0] === 'string') {
 			;(this.names[addr.section] ??= {})[addr.index] = m.args[0]
@@ -214,7 +255,16 @@ export class Engine {
 
 		// The console echoes values we just wrote. Those are not the operator touching something.
 		const sent = this.sentAt.get(m.path)
-		if (sent && Date.now() - sent < ECHO_WINDOW_MS) return
+		if (sent && Date.now() - sent < ECHO_WINDOW_MS) {
+			this.audit.note(m.path, m.args)
+			return
+		}
+		this.audit.change({
+			address: m.path,
+			channel: describe(addr.section, addr.index, this.names[addr.section]?.[addr.index]),
+			parameter: addr.suffix,
+			args: m.args,
+		})
 
 		this.learn(addr)
 		this.touch(addr.section, addr.index)
@@ -383,6 +433,7 @@ export class Engine {
 		if (this.lastRecalled === id) this.lastRecalled = null
 		this.setClearMode(false)
 		if (existed) {
+			this.audit.event(`Cleared slot ${id}`)
 			this.log('info', `Cleared slot ${id}`)
 			this.persist()
 		}
@@ -425,6 +476,7 @@ export class Engine {
 			const path = `/${section}/${index}/${suffix}`
 			this.transport.send(path, v.t, v.a)
 			this.sentAt.set(path, now)
+			this.audit.note(path, v.a)
 			n++
 		}
 		if (this.sentAt.size > 5000) {
@@ -462,6 +514,7 @@ export class Engine {
 			this.held = []
 			this.scriptHeld = null
 			this.namesRec = null
+			this.audit.event(`Stored ${waiting.kind} in slot ${id}: ${describeSlot(this.lib.slots[id])}`)
 			this.log('info', `Stored ${waiting.kind} in slot ${id}: ${describeSlot(this.lib.slots[id])}`)
 			this.persist()
 			this.changed()
@@ -501,6 +554,14 @@ export class Engine {
 			}
 		})
 		this.lastRecalled = id
+		const scopeNote = slot.steps.some((step) => !step.fixed)
+			? ` [${SCOPE_IDS.filter((scope) => this.scopes.has(scope))
+					.join(' ')
+					.toUpperCase()}]`
+			: ''
+		this.audit.event(
+			`Recalled slot ${id} (${slot.label || describeSlot(slot)})${scopeNote}: ${n} values to ${describeChannels(uniqueTargets(targets))}`,
+		)
 		this.log('info', `Recalled slot ${id}: ${n} values to ${describeChannels(targets)}`)
 		this.changed()
 		return 'recalled'
@@ -671,6 +732,7 @@ export class Engine {
 			scriptRecording: !!this.scriptRec,
 			scriptSteps: this.scriptRec ? this.scriptRec.steps.length : this.scriptHeld ? this.scriptHeld.length : 0,
 			scriptHeld: !!this.scriptHeld,
+			audit: this.audit.enabled,
 			namesRecording: !!this.namesRec,
 			namesCount: this.namesCount(),
 		}

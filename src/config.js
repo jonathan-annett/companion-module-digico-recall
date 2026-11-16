@@ -13,6 +13,8 @@ export const DEFAULTS = {
 	ipadSendPort: 9000,
 	ipadRecvPort: 9001,
 	libraryFile: '',
+	audit: false,
+	auditFolder: '',
 	// Not shown in the settings form: the stored slots, as JSON.
 	library: '',
 }
@@ -132,6 +134,20 @@ export function getConfigFields(config = DEFAULTS, label = 'digico-recall') {
 			type: 'textinput',
 			id: 'libraryFile',
 			label: 'Also keep the library in this file (optional, full path to a .json file)',
+			width: 12,
+			default: '',
+		},
+		{
+			type: 'checkbox',
+			id: 'audit',
+			label: 'Audit log: start with it on (records every change the console reports, with the time)',
+			width: 12,
+			default: DEFAULTS.audit,
+		},
+		{
+			type: 'textinput',
+			id: 'auditFolder',
+			label: 'Audit log: also write it to this folder, one CSV file per day (optional, full path)',
 			width: 12,
 			default: '',
 		},

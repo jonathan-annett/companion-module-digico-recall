@@ -94,6 +94,12 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 @media (max-width: 900px) { .shot { --k: 1; } }
 .steps { max-width: 70ch; padding-left: 20px; }
 .steps li { margin: 6px 0; }
+table.log { border: 1px solid var(--line); border-radius: 6px; }
+table.log th { text-align: left; padding: 6px 12px; color: var(--dim); font-weight: 500; font-size: 12px; background: var(--panel); position: sticky; top: 0; }
+table.log td { padding: 4px 12px; vertical-align: baseline; }
+table.log tr.ev td { color: var(--accent); }
+table.log .was { color: var(--dim); }
+#logfilter { width: 220px; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: 1; }
 #toast.bad { border-color: var(--bad); color: var(--bad); }
@@ -117,7 +123,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 	var base = location.pathname.replace(/\/?$/, '/')
 	var S = { status: null, lib: null, tab: 'slots', sel: { slots: null }, draft: null, dirty: false,
 		names: { section: 'Input_Channels', live: {}, edit: {}, slotId: '' } }
-	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['library', 'Library'], ['setup', 'Setup']]
+	var TABS = [['slots', 'Slots'], ['names', 'Names'], ['log', 'Log'], ['library', 'Library'], ['setup', 'Setup']]
 
 	function h(tag, attrs) {
 		var el = document.createElement(tag)
@@ -517,6 +523,96 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 			}))
 	}
 
+	// ---- log -----------------------------------------------------------------------
+
+	// The audit trail: every change the console reports, and everything the module does.
+	var LOG = { entries: [], seq: 0, enabled: false, filter: '', paused: false, timer: null }
+
+	function logTime(t) {
+		var d = new Date(t)
+		var p2 = function (n) { return (n < 10 ? '0' : '') + n }
+		var ms = d.getMilliseconds()
+		return p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()) + '.' + (ms < 100 ? '0' : '') + (ms < 10 ? '0' : '') + ms
+	}
+
+	function pollLog() {
+		if (LOG.paused) return Promise.resolve()
+		return api('api/log?since=' + LOG.seq).then(function (r) {
+			var changed = r.enabled !== LOG.enabled || r.entries.length > 0
+			LOG.enabled = r.enabled
+			if (r.seq < LOG.seq) LOG.entries = [] // the module restarted or the log was cleared
+			LOG.seq = r.seq
+			r.entries.forEach(function (entry) {
+				// A fader move keeps updating one entry: replace it instead of adding a new line
+				for (var i = LOG.entries.length - 1; i >= 0 && i > LOG.entries.length - 200; i--) {
+					if (LOG.entries[i].t === entry.t && LOG.entries[i].address === entry.address) { LOG.entries[i] = entry; return }
+				}
+				LOG.entries.push(entry)
+			})
+			if (LOG.entries.length > 5000) LOG.entries.splice(0, LOG.entries.length - 5000)
+			if (changed && S.tab === 'log' && !(document.activeElement && document.activeElement.id === 'logfilter')) render()
+			else if (changed && S.tab === 'log') drawLogRows()
+		})
+	}
+
+	function logMatches(entry) {
+		if (!LOG.filter) return true
+		var hay = (entry.channel + ' ' + entry.parameter + ' ' + entry.to + ' ' + entry.source).toLowerCase()
+		return LOG.filter.toLowerCase().split(/\s+/).every(function (word) { return hay.indexOf(word) >= 0 })
+	}
+
+	function drawLogRows() {
+		var body = $('logrows')
+		if (!body) return
+		body.textContent = ''
+		var shown = LOG.entries.filter(logMatches)
+		shown.slice(-500).reverse().forEach(function (entry) {
+			var isEvent = entry.type === 'event'
+			body.appendChild(h('tr', { class: isEvent ? 'ev' : '' },
+				h('td', { class: 'k' }, logTime(entry.t)),
+				isEvent ? h('td', { colspan: 3 }, entry.to) : [
+					h('td', {}, entry.channel),
+					h('td', { class: 'k' }, entry.parameter),
+					h('td', {}, entry.from !== '' && entry.from !== entry.to ? [h('span', { class: 'was' }, entry.from), ' \u2192 '] : null, h('b', {}, entry.to))]))
+		})
+		var note = $('lognote')
+		if (note) note.textContent = shown.length + ' entries' + (shown.length > 500 ? ', newest 500 shown' : '') + (LOG.filter ? ' matching the filter' : '') + '. Download gets them all.'
+	}
+
+	function viewLog() {
+		var view = h('div', { class: 'detail' },
+			h('h2', {}, 'Log'),
+			h('p', { class: 'sub' }, LOG.enabled
+				? 'Recording every change the console reports, and everything this module does. Newest first.'
+				: 'The audit log is off. Switch it on here or with the LOG button.'),
+			h('div', { class: 'bar' },
+				h('button', { class: 'b' + (LOG.enabled ? '' : ' go'), onclick: function () {
+					api('api/log/enable', { on: !LOG.enabled }).then(function (r) { LOG.enabled = r.enabled; return pollLog() }).then(render).catch(fail)
+				} }, LOG.enabled ? 'Switch log off' : 'Switch log on'),
+				h('button', { class: 'b', onclick: function () { LOG.paused = !LOG.paused; render() } }, LOG.paused ? 'Resume display' : 'Pause display'),
+				h('input', { id: 'logfilter', placeholder: 'filter, e.g. "in 5 eq"', value: LOG.filter, oninput: function (e) { LOG.filter = e.target.value; drawLogRows() } }),
+				h('button', { class: 'b', onclick: function () {
+					var q = function (c) { return '"' + String(c === undefined || c === null ? '' : c).replace(/"/g, '""') + '"' }
+					var lines = [['time', 'source', 'channel', 'parameter', 'from', 'to', 'messages', 'address'].map(q).join(',')]
+					LOG.entries.filter(logMatches).forEach(function (en) {
+						lines.push([new Date(en.t).toISOString(), en.source, en.channel, en.parameter, en.from, en.to, en.count, en.address].map(q).join(','))
+					})
+					var blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv' })
+					var a = h('a', { href: URL.createObjectURL(blob), download: 'digico-recall-log.csv' })
+					document.body.appendChild(a); a.click(); a.remove()
+				} }, 'Download CSV'),
+				h('button', { class: 'b danger', onclick: function () {
+					if (!confirm('Clear the log shown here? Anything already written to the log file stays.')) return
+					api('api/log/clear', {}).then(function () { LOG.entries = []; LOG.seq = 0; render() }).catch(fail)
+				} }, 'Clear')),
+			h('p', { class: 'note', id: 'lognote' }, ''),
+			h('table', { class: 'log' },
+				h('thead', {}, h('tr', {}, ['Time', 'Channel', 'Parameter', 'Change'].map(function (c) { return h('th', {}, c) }))),
+				h('tbody', { id: 'logrows' })))
+		setTimeout(drawLogRows, 0)
+		return view
+	}
+
 	// ---- setup ----------------------------------------------------------------------
 
 	// The console's External Control page, with this installation's values drawn on top.
@@ -615,13 +711,18 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		})
 		var main = $('main')
 		var typingIp = document.activeElement && document.activeElement.id === 'consoleip'
+		var typingFilter = document.activeElement && document.activeElement.id === 'logfilter'
 		var scroll = {}
 		Array.prototype.forEach.call(main.children, function (c, i) { scroll[i] = c.scrollTop })
 		main.textContent = ''
 		if (!S.status || !S.lib) { add(main, h('div', { class: 'detail' }, h('div', { class: 'empty-state' }, 'Loading…'))); return }
-		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'setup' ? viewSetup() : viewLibrary())
+		add(main, S.tab === 'slots' ? viewSlots() : S.tab === 'names' ? viewNames() : S.tab === 'log' ? viewLog() : S.tab === 'setup' ? viewSetup() : viewLibrary())
 		Array.prototype.forEach.call(main.children, function (c, i) { if (scroll[i]) c.scrollTop = scroll[i] })
 		setDirty(S.dirty)
+		if (typingFilter && $('logfilter')) {
+			$('logfilter').focus()
+			$('logfilter').setSelectionRange($('logfilter').value.length, $('logfilter').value.length)
+		}
 		if (typingIp && $('consoleip')) {
 			// Redrawing replaced the box being typed in: put the cursor back
 			$('consoleip').focus()
@@ -664,6 +765,7 @@ td.r { text-align: right; width: 1%; white-space: nowrap; }
 		if (!S.dirty && !typing && S.tab !== 'names') reload(false).catch(function () {})
 		if (S.tab === 'setup' && !typing) render()
 	}, 2500)
+	setInterval(function () { if (S.tab === 'log') pollLog().catch(function () {}) }, 1000)
 })()
 </script>
 </body>

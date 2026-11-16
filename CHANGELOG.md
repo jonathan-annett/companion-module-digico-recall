@@ -37,6 +37,11 @@ presets; stored libraries are converted automatically.
 
 ### Added
 
+- **Audit log.** Optional. Records every change the console reports with the time it
+  arrived, the channel, the control and the value before and after; a fader move is one
+  entry. Also records what the module does and connection changes. A LOG button switches
+  it on and off; the web page's Log tab shows it live with a filter and CSV download; a
+  folder can be set to keep one CSV file per day.
 - Setup help. The web page has a Setup tab built on a picture of the console's External
   Control page: type the console's own address into the box and it shows the device row to
   enter on the console, using this computer's address on that network, and saves the

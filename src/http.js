@@ -38,6 +38,11 @@ export async function handleHttp(self, request) {
 			})
 		}
 		if (method === 'GET' && path === '/api/lib') return json(engine.lib)
+		if (method === 'GET' && path === '/api/log') {
+			// Entries newer than the last one the page has. seq also moves when a burst grows.
+			const since = Number(request.query?.since) || 0
+			return json({ enabled: engine.audit.enabled, seq: engine.audit.seq, entries: engine.audit.since(since) })
+		}
 		if (method !== 'POST') return json({ error: 'Not found' }, 404)
 
 		let body = {}
@@ -110,6 +115,12 @@ export async function handleHttp(self, request) {
 				}
 				return saved()
 			}
+			case '/api/log/enable':
+				engine.audit.setEnabled(!!body.on)
+				return json({ enabled: engine.audit.enabled })
+			case '/api/log/clear':
+				engine.audit.clear()
+				return json({ ok: true })
 			case '/api/import':
 				engine.lib = cleanLibrary(body.lib)
 				return saved()

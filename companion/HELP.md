@@ -86,6 +86,19 @@ its contents, and the text of the last one recalled turns yellow.
   writes those names back and leaves every other name alone.
 - **ALL NAMES**: while SAVE NAMES is red, adds every name on the console to the list.
 
+**Log**
+
+- **LOG**: switches the audit log on and off (blue when on). While it is on, every change
+  the console reports is recorded with the time it arrived: which channel, which control,
+  and the value before and after. A fader move is one entry, not hundreds. Everything the
+  module does (store, recall, clear) and the connection coming and going is recorded too.
+- The small text button next to it shows the latest change.
+- Read the log live in the web page's **Log** tab: filter it ("in 5 eq"), pause it, and
+  download it as a CSV file. To keep a permanent record, name a folder in the connection
+  settings and the log is also written there, one CSV file per day.
+- The log holds the latest 5,000 entries in memory. It records what the console tells an
+  iPad-type device about, so anything the console doesn't announce can't be logged.
+
 ## Web page
 
 The connection's settings page has an **Open the DiGiCo Recall web page** link at the top.
@@ -98,6 +111,7 @@ Or open `http://<companion address>:<port>/instance/<this connection's label>/`
   button, copy to another slot, or send it to the console.
 - **Names**: read all names from the console, edit them in a grid, send back only what
   changed. Load names from a slot, or save the grid to one.
+- **Log**: the audit trail, live. See Log above.
 - **Library**: download everything as one file, or replace it from a file.
 
 ## What is not captured

@@ -37,6 +37,7 @@ src/http.js        web page JSON API
 src/webui.js       the web page (one self-contained document)
 src/engine.js      capture, recall, scripts, names; no Companion dependency
 src/params.js      address list per channel type; scope of each address
+src/audit.js       optional audit log: timestamped changes and events, CSV file
 src/validate.js    shape checks for anything from the web page or an imported file
 src/transport.js   paced UDP link
 src/osc.js         OSC encoding and decoding
@@ -152,3 +153,15 @@ console and network.
 - Libraries from 0.1.0 and the unreleased 0.1.1 builds are converted on load: captures
   become step lists, and scripts and name sets move into the first free slots.
 - The breaking change to buttons and stored data is why this became 0.2.0 and not 0.1.1.
+
+### 2026-11-16: audit log
+
+- Added an optional audit trail. Design points: off by default; a burst of values on one
+  address within 1.5 seconds is one entry with the first "from" and the last "to", so a
+  fader move is a single line; "from" comes from the last value seen or read for that
+  address; the module's own writes and the console's echoes of them are recorded as one
+  event line, never as operator changes; meters are never logged. Memory holds the
+  latest 5,000 entries; a folder setting adds one CSV file per day, written only once an
+  entry's burst has ended.
+- Structure: `src/audit.js` holds the log and the file writer; the engine reports changes
+  and events to it.

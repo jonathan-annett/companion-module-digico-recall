@@ -655,6 +655,111 @@ test('settings page shows the console row for the saved ports', () => {
 	)
 })
 
+test('audit log: off by default, and nothing is recorded until it is switched on', async (t) => {
+	const { sim, engine } = await rig(t)
+	assert.equal(engine.audit.enabled, false)
+	sim.surface('/Input_Channels/1/fader', 'f', [-5])
+	await until(() => engine.lastTouched?.index === 1, 'touch')
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(1)
+	assert.equal(engine.audit.entries.length, 0)
+})
+
+test('audit log: operator changes are timestamped, a fader move is one entry with from and to', async (t) => {
+	const { sim, engine } = await rig(t, { audit: true })
+	sim.values.set('/Input_Channels/5/Channel_Input/name', { t: 's', a: ['Vox'] })
+	await engine.captureChannel('Input_Channels', 5) // gives the log "before" values and the name
+	const start = Date.now()
+	for (const v of [-10, -8, -6, -4.25]) sim.surface('/Input_Channels/5/fader', 'f', [v])
+	sim.surface('/Input_Channels/5/mute', 'f', [1])
+	sim.surface('/Group_Outputs/2/EQ/eq_gain_1', 'f', [3])
+	sim.out('/Input_Channels/5/Dynamics/GR_meter_1', 'f', [0.5]) // meters are never logged
+	sim.out('/Snapshots/Current_Snapshot', 'i', [7]) // not a channel, still worth a line
+	sim.out('/Console/Name', 's', ['SimQuantum']) // housekeeping, not logged
+	await until(() => engine.audit.entries.filter((e) => e.type === 'change').length === 4, 'four changes')
+	await sleep(60)
+	const changes = engine.audit.entries.filter((e) => e.type === 'change')
+	assert.equal(changes.length, 4, 'fader burst merged; meter and console name ignored')
+
+	const fader = changes.find((e) => e.parameter === 'fader')
+	assert.equal(fader.channel, 'In 5 Vox')
+	assert.equal(fader.to, '-4.25')
+	assert.notEqual(fader.from, '', 'the value before the move is known from the earlier read')
+	assert.equal(fader.count, 4)
+	assert.ok(fader.t >= start && fader.t2 >= fader.t && fader.t2 <= Date.now())
+	assert.equal(changes.find((e) => e.parameter === 'mute').to, '1')
+	assert.equal(changes.find((e) => e.channel.startsWith('Grp 2')).parameter, 'EQ/eq_gain_1')
+	const snapshot = changes.find((e) => e.channel === 'Snapshots')
+	assert.equal(snapshot.parameter, 'Current_Snapshot')
+	assert.equal(snapshot.to, '7')
+	assert.equal(engine.audit.lastText().length > 0, true)
+
+	// A second move on the same fader later is a new entry, starting from where the first ended
+	await sleep(1600)
+	sim.surface('/Input_Channels/5/fader', 'f', [0])
+	await until(() => engine.audit.entries.filter((e) => e.parameter === 'fader').length === 2, 'second fader entry')
+	const again = engine.audit.entries.filter((e) => e.parameter === 'fader')[1]
+	assert.equal(again.from, '-4.25')
+	assert.equal(again.to, '0')
+})
+
+test('audit log: what the module does is recorded as events, and its own writes are not logged as operator changes', async (t) => {
+	const { sim, engine } = await rig(t, { audit: true })
+	await until(() => engine.audit.entries.some((e) => /Console connected/.test(e.to)), 'connection logged')
+	await engine.captureToHold('Input_Channels', 3)
+	engine.pressSlot(4)
+	engine.setScopes(['eq', 'comp'])
+	engine.pressSlot(4)
+	await engine.transport.drained()
+	await sleep(150) // the console echoes every value back
+	engine.setClearMode(true)
+	engine.pressSlot(4)
+	const events = engine.audit.entries.filter((e) => e.type === 'event').map((e) => e.to)
+	assert.ok(
+		events.some((text) => /^Stored capture in slot 4: In 3/.test(text)),
+		events.join(' | '),
+	)
+	assert.ok(
+		events.some((text) => /^Recalled slot 4 \(In 3 In3\) \[EQ COMP\]: \d+ values to In 3/.test(text)),
+		events.join(' | '),
+	)
+	assert.ok(events.includes('Cleared slot 4'))
+	assert.equal(
+		engine.audit.entries.filter((e) => e.type === 'change').length,
+		0,
+		'echoes and query replies are not changes',
+	)
+
+	engine.audit.setEnabled(false)
+	sim.surface('/Input_Channels/3/mute', 'f', [1])
+	await sleep(60)
+	assert.equal(engine.audit.entries[engine.audit.entries.length - 1].to, 'Audit log switched off')
+})
+
+test('audit log: written to one CSV file per day when a folder is set', async (t) => {
+	const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'recall-log-'))
+	const { sim, engine } = await rig(t, { audit: true, auditFolder: folder })
+	sim.surface('/Input_Channels/2/Channel_Input/name', 's', ['Say "hi", ok'])
+	sim.surface('/Input_Channels/2/fader', 'f', [-3])
+	await until(() => engine.audit.entries.filter((e) => e.type === 'change').length === 2, 'two changes')
+	engine.audit.flush(true)
+	const files = fs.readdirSync(folder)
+	assert.equal(files.length, 1)
+	assert.match(files[0], /^digico-recall-log-\d{4}-\d{2}-\d{2}\.csv$/)
+	const lines = fs.readFileSync(path.join(folder, files[0]), 'utf8').trim().split('\n')
+	assert.equal(lines[0], '"time","source","channel","parameter","from","to","messages","address"')
+	const faderLine = lines.find((line) => line.endsWith(',"fader","","-3","1","/Input_Channels/2/fader"'))
+	assert.ok(faderLine, lines.join('\n'))
+	assert.match(faderLine, /^"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z","console","In 2 /)
+	assert.ok(
+		lines.some((line) => line.includes('"Say ""hi"", ok"')),
+		'quotes and commas are escaped',
+	)
+	// Flushing again writes nothing twice
+	engine.audit.flush(true)
+	assert.equal(fs.readFileSync(path.join(folder, files[0]), 'utf8').trim().split('\n').length, lines.length)
+})
+
 // ---- through the Companion class ------------------------------------------------------
 
 class FakeBase {
