@@ -301,7 +301,15 @@ await test('Buttons tab: the web API plans a page and returns a file to import, 
 	assert.equal(made.plan.slots.length, Math.min(15, status.slotCount), 'as many slots as fit, up to the number set up')
 	assert.equal(made.file.type, 'page')
 	assert.equal(Object.values(made.file.instances)[0].label, 'recall')
-	assert.ok(!JSON.stringify(made.file).includes('In5'), 'stored captures are not in the file')
+	// Stored captures are not in the file. (Not tested by looking for a channel name in the
+	// text: the file's random ids can spell one by chance, which failed a run on GitHub.)
+	const shipped = Object.values(made.file.instances)[0].config
+	assert.equal(shipped.library, undefined)
+	// a capture is channels with "section" and "values"; a page of buttons has neither
+	const text = JSON.stringify(made.file)
+	assert.ok(!text.includes('"values"') && !text.includes('"section"'), 'no capture data anywhere in the file')
+	assert.ok(JSON.stringify(mod.engine.lib).includes('"values"'), 'which the stored captures do contain')
+	assert.ok(Object.keys(mod.engine.lib.slots).length > 0, 'and there were captures that could have leaked')
 	const small = (await http('POST', '/api/layout', { columns: 3, rows: 2, nav: false, keys: ['arm', 'target'] })).data
 	assert.deepEqual(small.plan.slots, [1, 2, 3, 4])
 	const refused = await http('POST', '/api/layout', {
