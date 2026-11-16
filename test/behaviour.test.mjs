@@ -1,0 +1,452 @@
+// Edge cases and safety behaviour, each test with its own console and module so they
+// don't depend on one another.
+
+import assert from 'node:assert/strict'
+import dgram from 'node:dgram'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import { SimConsole } from './sim-console.mjs'
+import { Engine } from '../src/engine.js'
+import { makeInstanceClass } from '../src/instance.js'
+import { encode, decode } from '../src/osc.js'
+import { captureSuffixes, scopeOf, parseAddress, SCOPE_IDS, SECTION_IDS } from '../src/params.js'
+import { cleanSnapshot, cleanScript, cleanLibrary, cleanNames } from '../src/validate.js'
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+async function until(check, what, ms = 4000) {
+	const end = Date.now() + ms
+	while (Date.now() < end) {
+		if (check()) return
+		await sleep(10)
+	}
+	throw new Error(`Timed out waiting for: ${what}`)
+}
+
+let nextPort = 19000
+/** A console and an engine wired together on their own pair of ports. */
+async function rig(t, cfg = {}, simOpts = {}) {
+	const consolePort = nextPort++
+	const modulePort = nextPort++
+	const sim = new SimConsole({ listenPort: consolePort, replyPort: modulePort, ...simOpts })
+	await sim.start()
+	const logs = []
+	let saved = null
+	const engine = new Engine(
+		{ ip: '127.0.0.1', sendPort: consolePort, recvPort: modulePort, rate: 2000, queryTimeout: 120, ...cfg },
+		{ log: (level, text) => logs.push([level, text]), persist: (lib) => (saved = JSON.parse(JSON.stringify(lib))) },
+	)
+	engine.start()
+	t.after(async () => {
+		await engine.stop()
+		await sim.stop().catch(() => {})
+	})
+	await until(() => engine.consoleName === 'SimQuantum' && engine.counts.Aux_Outputs !== undefined, 'console info')
+	return { sim, engine, logs, saved: () => saved, consolePort, modulePort }
+}
+
+test('parameter table: every address has a recall scope, and the dangerous ones are absent', () => {
+	for (const section of SECTION_IDS) {
+		const suffixes = captureSuffixes(section, 4)
+		assert.ok(suffixes.length > 0, section)
+		assert.equal(new Set(suffixes).size, suffixes.length, `${section} has duplicate addresses`)
+		for (const suffix of suffixes) {
+			assert.ok(SCOPE_IDS.includes(scopeOf(suffix)), `${section}/${suffix}`)
+			assert.ok(!/phantom|solo|listen|meter|alt_|main\/alt/i.test(suffix), `${section}/${suffix} must not be captured`)
+		}
+	}
+	assert.equal(scopeOf('EQ/eq_gain_3'), 'eq')
+	assert.equal(scopeOf('Filters/hi_filter_freq'), 'eq')
+	assert.equal(scopeOf('geq_gain_31'), 'eq')
+	assert.equal(scopeOf('Dynamics/comp_thresh_1'), 'comp')
+	assert.equal(scopeOf('Dynamics/gate_thresh'), 'gate')
+	assert.equal(scopeOf('Dynamics/gate-duck-comp'), 'gate')
+	assert.equal(scopeOf('fader'), 'level')
+	assert.equal(scopeOf('mute'), 'level')
+	assert.equal(scopeOf('Aux_Send/12/send_level'), 'aux')
+	assert.equal(scopeOf('Channel_Input/analog_gain'), 'gain')
+	assert.equal(scopeOf('Buss_Trim/trim'), 'gain')
+	assert.equal(scopeOf('Panner/pan'), 'pan')
+	assert.equal(scopeOf('Channel_Delay/delay'), 'delay')
+	assert.equal(scopeOf('Channel_Input/name'), 'name')
+	assert.equal(scopeOf('Buss_Trim/name'), 'name')
+	assert.equal(scopeOf('Insert/insert_A_in'), 'other')
+	assert.deepEqual(parseAddress('/Group_Outputs/12/EQ/eq_gain_2'), {
+		section: 'Group_Outputs',
+		index: 12,
+		suffix: 'EQ/eq_gain_2',
+	})
+	assert.equal(parseAddress('/Snapshots/Current_Snapshot'), null)
+})
+
+test('aux send capture follows the number of auxes the console reports', async (t) => {
+	const { engine } = await rig(t, {}, { counts: { Aux_Outputs: 7 } })
+	const snap = await engine.captureChannel('Input_Channels', 1)
+	const sends = Object.keys(snap.values).filter((s) => s.startsWith('Aux_Send/'))
+	assert.equal(sends.length, 7 * 3)
+	assert.ok(snap.values['Aux_Send/7/send_pan'])
+})
+
+test('OSC decoder: bundles, address-only packets and garbage do not throw', () => {
+	const a = encode('/Input_Channels/1/fader', 'f', [-5])
+	const b = encode('/Input_Channels/2/Channel_Input/name', 's', ['Vox'])
+	const size = (buf) => {
+		const s = Buffer.alloc(4)
+		s.writeUInt32BE(buf.length)
+		return s
+	}
+	const bundle = Buffer.concat([Buffer.from('#bundle\0'), Buffer.alloc(8), size(a), a, size(b), b])
+	const out = decode(bundle)
+	assert.equal(out.length, 2)
+	assert.equal(out[1].args[0], 'Vox')
+	assert.deepEqual(decode(Buffer.from('/Console/Session/!\0\0')), [{ path: '/Console/Session/!', types: '', args: [] }])
+	assert.deepEqual(decode(Buffer.from('not osc at all')), [])
+	assert.deepEqual(decode(Buffer.alloc(0)), [])
+	// Untagged meter payload, as the console sends for some meters
+	const meter = Buffer.concat([Buffer.from('/Meters/values\0\0'), Buffer.from([0x3f, 0x80, 0, 0])])
+	assert.equal(decode(meter)[0].args.length, 0)
+	// A truncated float argument is dropped rather than read past the end
+	assert.equal(decode(a.subarray(0, a.length - 2))[0].args.length, 0)
+})
+
+test('while armed: meters, names from queries and console info do not trigger a capture', async (t) => {
+	const { sim, engine } = await rig(t)
+	engine.toggleArm()
+	sim.out('/Input_Channels/3/Dynamics/GR_meter_1', 'f', [0.4])
+	sim.out('/Group_Outputs/1/fader_meter/left', 'f', [0.2])
+	sim.out('/Console/Name', 's', ['SimQuantum'])
+	sim.out('/Snapshots/Current_Snapshot', 'i', [4])
+	await sleep(150)
+	assert.equal(engine.mode, 'armed')
+	assert.equal(engine.lastTouched, null)
+	sim.surface('/Input_Channels/3/solo', 'f', [1])
+	await until(() => engine.mode === 'holding', 'solo press triggers the capture')
+	assert.equal(engine.held.index, 3)
+	assert.equal(engine.held.values.solo, undefined, 'solo state itself is not stored')
+})
+
+test('cancel: arming twice cancels, and cancel drops a waiting capture and a script recording', async (t) => {
+	const { sim, engine } = await rig(t)
+	engine.toggleArm()
+	engine.toggleArm()
+	assert.equal(engine.mode, 'idle')
+	sim.surface('/Input_Channels/2/fader', 'f', [0])
+	await sleep(100)
+	assert.equal(engine.mode, 'idle', 'a touch while not armed captures nothing')
+
+	engine.toggleArm()
+	sim.surface('/Input_Channels/2/fader', 'f', [1])
+	await until(() => engine.mode === 'holding', 'capture')
+	engine.toggleScriptRecord()
+	engine.cancel()
+	assert.equal(engine.mode, 'idle')
+	assert.equal(engine.held, null)
+	assert.equal(engine.scriptRec, null)
+	assert.equal(engine.pressSlot(1), 'empty', 'nothing was stored')
+})
+
+test('slot buttons do nothing harmful while a capture is in progress or the slot is empty', async (t) => {
+	const { sim, engine } = await rig(t)
+	sim.received.length = 0
+	assert.equal(engine.pressSlot(5), 'empty')
+	engine.toggleArm()
+	assert.equal(engine.pressSlot(5), 'busy')
+	assert.equal(engine.pressScript(1), 'busy')
+	engine.cancel()
+	assert.equal(engine.pressScript(1), 'empty')
+	await sleep(80)
+	assert.equal(sim.received.length, 0, 'nothing was sent to the console')
+})
+
+test('recall with no scopes switched on sends nothing', async (t) => {
+	const { sim, engine } = await rig(t)
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(1)
+	engine.setScopes([])
+	sim.received.length = 0
+	assert.equal(engine.pressSlot(1), 'recalled')
+	await sleep(80)
+	assert.equal(sim.received.length, 0)
+})
+
+test('a graphic EQ capture is refused on a channel, and a channel capture on a graphic EQ', async (t) => {
+	const { sim, engine, logs } = await rig(t)
+	await engine.captureToHold('Graphic_EQ', 1)
+	engine.pressSlot(1)
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(2)
+	engine.setTargetMode('touched')
+	engine.setScopes(SCOPE_IDS)
+	sim.surface('/Input_Channels/4/fader', 'f', [0])
+	await until(() => engine.lastTouched?.index === 4, 'touch input 4')
+	sim.received.length = 0
+	assert.equal(engine.pressSlot(1), 'mismatch')
+	sim.surface('/Graphic_EQ/2/geq_gain_3', 'f', [1])
+	await until(() => engine.lastTouched?.section === 'Graphic_EQ', 'touch GEQ 2')
+	assert.equal(engine.pressSlot(2), 'mismatch')
+	await sleep(80)
+	assert.equal(sim.received.length, 0)
+	assert.ok(logs.some(([level]) => level === 'warn'))
+	// GEQ to another GEQ is fine
+	assert.equal(engine.pressSlot(1), 'recalled')
+	await until(() => sim.get('/Graphic_EQ/2/geq_gain_9') === sim.get('/Graphic_EQ/1/geq_gain_9'), 'GEQ copied')
+})
+
+test('script recorded with "last touched" target replays to the channels it was aimed at', async (t) => {
+	const { sim, engine } = await rig(t)
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(1)
+	engine.setTargetMode('touched')
+	engine.setScopes(['eq'])
+	engine.toggleScriptRecord()
+	for (const n of [6, 7]) {
+		sim.surface(`/Input_Channels/${n}/mute`, 'f', [0])
+		await until(() => engine.lastTouched?.index === n, `touch ${n}`)
+		engine.pressSlot(1)
+	}
+	engine.toggleScriptRecord()
+	assert.equal(engine.pressScript(2), 'stored')
+	assert.deepEqual(
+		engine.lib.scripts['2'].steps.map((s) => s.index),
+		[6, 7],
+	)
+	sim.surface('/Input_Channels/6/EQ/eq_gain_1', 'f', [-17])
+	sim.surface('/Input_Channels/7/EQ/eq_gain_1', 'f', [-17])
+	sim.surface('/Input_Channels/9/mute', 'f', [0]) // touching something else must not redirect the script
+	await until(() => engine.lastTouched?.index === 9, 'touch 9')
+	engine.pressScript(2)
+	const want = engine.lib.slots['1'].values['EQ/eq_gain_1'].a[0]
+	await until(() => sim.get('/Input_Channels/6/EQ/eq_gain_1') === want, 'input 6')
+	await until(() => sim.get('/Input_Channels/7/EQ/eq_gain_1') === want, 'input 7')
+	assert.notEqual(sim.get('/Input_Channels/9/EQ/eq_gain_1'), want)
+})
+
+test('an empty script recording is discarded rather than stored', async (t) => {
+	const { engine } = await rig(t)
+	engine.toggleScriptRecord()
+	engine.toggleScriptRecord()
+	assert.equal(engine.scriptHeld, null)
+	assert.equal(engine.pressScript(1), 'empty')
+})
+
+test('learn mode: an unknown parameter is added to captures; solo, meters and names never are', async (t) => {
+	const { sim, engine, saved } = await rig(t, { learn: true })
+	sim.surface('/Input_Channels/2/Mustard/drive', 'f', [0.7])
+	sim.surface('/Input_Channels/2/solo', 'f', [1])
+	sim.surface('/Input_Channels/2/Dynamics/GR_meter_1', 'f', [0.1])
+	sim.surface('/Input_Channels/2/Channel_Input/phantom', 'f', [1])
+	sim.surface('/Input_Channels/2/EQ/eq_gain_1', 'f', [2]) // already known
+	await until(() => engine.lib.learned.Input_Channels?.length === 1, 'one parameter learned')
+	await sleep(80)
+	assert.deepEqual(engine.lib.learned.Input_Channels, ['Mustard/drive'])
+	assert.deepEqual(saved().learned.Input_Channels, ['Mustard/drive'], 'learned list is persisted')
+	const snap = await engine.captureChannel('Input_Channels', 2)
+	assert.equal(snap.values['Mustard/drive'].a[0], Math.fround(0.7))
+	assert.equal(scopeOf('Mustard/drive'), 'other')
+})
+
+test('learn mode off (the default): unknown parameters are ignored', async (t) => {
+	const { sim, engine } = await rig(t)
+	sim.surface('/Input_Channels/2/Mustard/drive', 'f', [0.7])
+	await until(() => engine.lastTouched?.index === 2, 'touch')
+	assert.deepEqual(engine.lib.learned, {})
+})
+
+test('sending is paced to the configured rate', async (t) => {
+	const { sim, engine } = await rig(t, { rate: 200 })
+	await engine.captureToHold('Graphic_EQ', 1)
+	engine.pressSlot(1)
+	engine.setScopes(['eq'])
+	sim.received.length = 0
+	const started = Date.now()
+	engine.pressSlot(1) // 33 values at 200/s should take roughly 160 ms
+	await until(() => sim.received.length === 33, 'all GEQ values to arrive')
+	const took = Date.now() - started
+	assert.ok(took >= 100, `33 messages at 200/s arrived in ${took} ms, which is too fast`)
+	assert.ok(took < 1500, `took ${took} ms`)
+})
+
+test('values go back with the same OSC type they were read with', async (t) => {
+	const { sim, engine } = await rig(t)
+	sim.values.set('/Input_Channels/1/mute', { t: 'i', a: [1] })
+	await engine.captureToHold('Input_Channels', 1)
+	engine.pressSlot(1)
+	engine.setScopes(['level', 'name'])
+	sim.received.length = 0
+	engine.pressSlot(1)
+	await until(() => sim.received.length === 3, 'fader, mute, name')
+	const types = Object.fromEntries(sim.received.map((m) => [m.path.split('/').pop(), m.types]))
+	assert.deepEqual(types, { fader: 'f', mute: 'i', name: 's' })
+})
+
+test('validation: bad entries from the web page or an imported file are dropped or repaired', () => {
+	assert.equal(cleanSnapshot({ section: 'Nope', index: 1, values: {} }), null)
+	assert.equal(cleanSnapshot({ section: 'Input_Channels', index: 0, values: {} }), null)
+	const snap = cleanSnapshot({
+		section: 'Input_Channels',
+		index: '3',
+		values: {
+			fader: { t: 'f', a: ['-6.5'] },
+			'EQ/eq_gain_1': { t: 'f', a: [Infinity] },
+			'bad path!': { t: 'f', a: [1] },
+			'Channel_Input/name': { t: 's', a: [42] },
+			mute: { t: 'f', a: [1, 2] },
+			pan: { t: 'x', a: [1] },
+		},
+	})
+	assert.equal(snap.index, 3)
+	assert.deepEqual(snap.values, { fader: { t: 'f', a: [-6.5] }, 'Channel_Input/name': { t: 's', a: ['42'] } })
+	assert.equal(cleanScript({ steps: 'nope' }), null)
+	assert.equal(
+		cleanScript({
+			steps: [
+				{ section: 'Nope', index: 1 },
+				{ section: 'Aux_Outputs', index: 2 },
+			],
+		}).steps.length,
+		1,
+	)
+	assert.deepEqual(cleanNames({ Input_Channels: { 1: 'Kick', x: 'bad', 2: 7 }, Bogus: { 1: 'a' } }), {
+		Input_Channels: { 1: 'Kick' },
+	})
+	const lib = cleanLibrary({
+		slots: { 1: null, 2: { section: 'Graphic_EQ', index: 1, values: {} } },
+		learned: { Input_Channels: ['ok/one', 'bad one'] },
+	})
+	assert.deepEqual(Object.keys(lib.slots), ['2'])
+	assert.deepEqual(lib.learned.Input_Channels, ['ok/one'])
+	assert.deepEqual(cleanLibrary('garbage').slots, {})
+})
+
+// ---- through the Companion class ------------------------------------------------------
+
+class FakeBase {
+	constructor() {
+		this.label = 'recall'
+		this.saved = null
+		this.logs = []
+	}
+	setActionDefinitions(d) {
+		this.actions = d
+	}
+	setFeedbackDefinitions(d) {
+		this.feedbacks = d
+	}
+	setVariableDefinitions() {}
+	setPresetDefinitions() {}
+	setVariableValues() {}
+	checkAllFeedbacks() {}
+	updateStatus(status, text) {
+		this.status = [status, text]
+	}
+	saveConfig(c) {
+		this.saved = { ...c }
+	}
+	log(level, text) {
+		this.logs.push([level, text])
+	}
+}
+const Instance = makeInstanceClass({
+	InstanceBase: FakeBase,
+	InstanceStatus: {
+		Ok: 'ok',
+		Connecting: 'connecting',
+		ConnectionFailure: 'connection_failure',
+		UnknownError: 'unknown_error',
+	},
+})
+
+test('connection status follows the console: connecting, ok, then failure when it goes away', async (t) => {
+	const consolePort = nextPort++
+	const modulePort = nextPort++
+	const mod = new Instance({})
+	t.after(() => mod.destroy())
+	await mod.init({ host: '127.0.0.1', sendPort: consolePort, recvPort: modulePort })
+	assert.equal(mod.status[0], 'connecting')
+	const sim = new SimConsole({ listenPort: consolePort, replyPort: modulePort })
+	await sim.start()
+	mod.engine.refreshConsole()
+	await until(() => mod.status[0] === 'ok', 'status ok')
+	await sim.stop()
+	mod.engine.lastReply = Date.now() - 60000 // as if a minute has passed with no replies
+	mod.engine.poll()
+	assert.equal(mod.status[0], 'connection_failure')
+})
+
+test('library file: written on every change and read back on start', async (t) => {
+	const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'recall-')), 'library.json')
+	const consolePort = nextPort++
+	const modulePort = nextPort++
+	const sim = new SimConsole({ listenPort: consolePort, replyPort: modulePort })
+	await sim.start()
+	const config = {
+		host: '127.0.0.1',
+		sendPort: consolePort,
+		recvPort: modulePort,
+		rate: 2000,
+		queryTimeout: 120,
+		libraryFile: file,
+	}
+	let mod = new Instance({})
+	t.after(async () => {
+		await mod.destroy()
+		await sim.stop()
+	})
+	await mod.init(config)
+	await until(() => mod.engine.counts.Aux_Outputs !== undefined, 'console info')
+	await mod.actions.capture.callback({ options: { section: 'Aux_Outputs', index: 2 } })
+	await mod.actions.slot.callback({ options: { slot: 9 } })
+	assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).slots['9'].section, 'Aux_Outputs')
+	await mod.destroy()
+	mod = new Instance({})
+	await mod.init(config) // note: no library in the config, only the file
+	assert.equal(mod.engine.lib.slots['9'].index, 2)
+})
+
+test('iPad relay: datagrams pass both ways, and a value written from the iPad counts as a touch', async (t) => {
+	const consolePort = nextPort++
+	const modulePort = nextPort++
+	const ipadListen = nextPort++
+	const moduleIpadPort = nextPort++
+	const sim = new SimConsole({ listenPort: consolePort, replyPort: modulePort })
+	await sim.start()
+	const ipad = dgram.createSocket('udp4')
+	const ipadGot = []
+	ipad.on('message', (buf) => ipadGot.push(...decode(buf)))
+	await new Promise((r) => ipad.bind(ipadListen, r))
+	const mod = new Instance({})
+	t.after(async () => {
+		await mod.destroy()
+		await sim.stop()
+		ipad.close()
+	})
+	await mod.init({
+		host: '127.0.0.1',
+		sendPort: consolePort,
+		recvPort: modulePort,
+		rate: 2000,
+		queryTimeout: 120,
+		ipadEnabled: true,
+		ipadHost: '127.0.0.1',
+		ipadSendPort: ipadListen,
+		ipadRecvPort: moduleIpadPort,
+	})
+	await until(() => mod.engine.counts.Aux_Outputs !== undefined, 'console info')
+
+	// Console to iPad
+	sim.surface('/Input_Channels/1/fader', 'f', [-3])
+	await until(() => ipadGot.some((m) => m.path === '/Input_Channels/1/fader'), 'iPad sees the console change')
+
+	// iPad query: the answer reaches the iPad but is not treated as a touch
+	mod.engine.lastTouched = null
+	ipad.send(encode('/Input_Channels/8/EQ/eq_gain_1/?'), moduleIpadPort, '127.0.0.1')
+	await until(() => ipadGot.some((m) => m.path === '/Input_Channels/8/EQ/eq_gain_1'), 'iPad gets its answer')
+	await sleep(50)
+	assert.equal(mod.engine.lastTouched, null)
+
+	// iPad write: reaches the console and counts as a touch
+	ipad.send(encode('/Input_Channels/8/fader', 'f', [-12]), moduleIpadPort, '127.0.0.1')
+	await until(() => sim.get('/Input_Channels/8/fader') === -12, 'console gets the iPad change')
+	assert.deepEqual(mod.engine.lastTouched, { section: 'Input_Channels', index: 8 })
+})
