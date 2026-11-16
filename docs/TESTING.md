@@ -22,57 +22,61 @@ by the manual plan below.
 
 ### test/module.test.mjs: the operator's workflow, in order
 
-| #   | Test                                                     | What it shows                                                                                                         |
-| --- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| 1   | OSC codec round-trips floats, ints and strings           | Encoding and decoding agree, including the `/?` query form                                                            |
-| 2   | connects and learns console name and channel counts      | Start-up queries work; counts drive later captures                                                                    |
-| 3   | arm, touch a channel, press a slot                       | The full capture path. Every address on the channel is stored even though the simulator drops 1 in 17 replies         |
-| 4   | library is saved into the Companion config               | Captures persist                                                                                                      |
-| 5   | recall sends only the scopes that are switched on        | EQ and GAIN restored; COMP, GATE and fader left alone; no name or phantom sent                                        |
-| 6   | the console echoing a recall is not mistaken for a touch | "Last touched" stays on the channel the operator touched                                                              |
-| 7   | recall to the last touched channel                       | An input capture's compressor lands on a group; the original is unchanged                                             |
-| 8   | graphic EQ capture and recall                            | All 32 bands plus in/out                                                                                              |
-| 9   | record a script and run it from one button               | Two steps with different scopes; still works after the source slots are cleared                                       |
-| 10  | capture all names to a set, then restore                 | Only the chosen types are written back                                                                                |
-| 11  | NAME scope carries a channel name                        | Name restored with a preset                                                                                           |
-| 12  | web page and API                                         | Page is served; edit a value, relabel, send, read and write names, edit a script; invalid input is refused or cleaned |
-| 13  | library survives a restart and a config edit             | Including Companion's settings form, which doesn't carry the library                                                  |
-| 14  | a silent console produces a warning                      | No empty capture is stored                                                                                            |
+| #   | Test                                                     | What it shows                                                                                                           |
+| --- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | OSC codec round-trips floats, ints and strings           | Encoding and decoding agree, including the `/?` query form                                                              |
+| 2   | connects and learns console name and channel counts      | Start-up queries work; counts drive later captures                                                                      |
+| 3   | arm, touch a channel, press a slot                       | The full capture path. Every address on the channel is stored even though the simulator drops 1 in 17 replies           |
+| 4   | library is saved into the Companion config               | Captures persist                                                                                                        |
+| 5   | recall sends only the scopes that are switched on        | EQ and GAIN restored; COMP, GATE and fader left alone; no name or phantom sent                                          |
+| 6   | the console echoing a recall is not mistaken for a touch | "Last touched" stays on the channel the operator touched                                                                |
+| 7   | recall to the last touched channel                       | An input capture's compressor lands on a group; the original is unchanged                                               |
+| 8   | graphic EQ capture and recall                            | All 32 bands plus in/out                                                                                                |
+| 9   | record a script and run it from one button               | Two steps with different scopes; still works after the source slots are cleared                                         |
+| 10  | capture all names to a set, then restore                 | Only the chosen types are written back                                                                                  |
+| 11  | NAME scope carries a channel name                        | Name restored with a preset                                                                                             |
+| 12  | web page and API                                         | Page is served; edit a value, relabel, send, read and write names, edit a script; invalid input is refused or cleaned   |
+| 13  | library survives a restart and a config edit             | Including Companion's settings form, which doesn't carry the library                                                    |
+| 14  | web setup                                                | Resolving an address changes nothing; applying it saves it, keeps the library and reconnects; bad addresses are refused |
+| 15  | a silent console produces a warning                      | No empty capture is stored                                                                                              |
 
 ### test/behaviour.test.mjs: edge cases and safety
 
-| #   | Test                                                            | What it shows                                                                                                             |
-| --- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 1   | parameter table                                                 | Every address maps to a scope; no phantom, solo, listen, meter or alt-input address is in any capture list; no duplicates |
-| 2   | aux send capture follows the console's aux count                | 7 auxes gives 21 send values                                                                                              |
-| 3   | OSC decoder tolerates bundles, address-only packets and garbage | Malformed input never throws                                                                                              |
-| 4   | while armed, meters and console info do not trigger a capture   | Only a real control change does; the solo state is not stored                                                             |
-| 5   | cancel                                                          | Arming twice cancels; cancel drops a waiting capture and a recording                                                      |
-| 6   | slot buttons while busy or empty                                | Nothing is sent to the console                                                                                            |
-| 7   | recall with no scopes on                                        | Nothing is sent                                                                                                           |
-| 8   | GEQ and channel captures are not interchangeable                | Refused with a warning; GEQ to GEQ works                                                                                  |
-| 9   | script recorded with "last touched" target                      | Replays to the channels it was aimed at, wherever the operator touches later                                              |
-| 10  | empty script recording                                          | Discarded                                                                                                                 |
-| 11  | learn mode                                                      | Unknown parameter learned, persisted and captured; solo, meters, phantom never learned                                    |
-| 12  | learn mode off                                                  | Unknown parameters ignored                                                                                                |
-| 13  | pacing                                                          | 33 values at 200 a second take at least 100 ms                                                                            |
-| 14  | OSC types preserved                                             | An int read is an int sent                                                                                                |
-| 15  | validation                                                      | Bad snapshots, scripts, names and libraries are dropped or repaired                                                       |
-| 16  | connection status                                               | Connecting, OK, then failure when replies stop                                                                            |
-| 17  | library file                                                    | Written on change, read on start                                                                                          |
-| 18  | iPad relay                                                      | Passes both ways; iPad query replies are not touches; iPad writes are                                                     |
+| #   | Test                                                            | What it shows                                                                                                                             |
+| --- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | parameter table                                                 | Every address maps to a scope; no phantom, solo, listen, meter or alt-input address is in any capture list; no duplicates                 |
+| 2   | aux send capture follows the console's aux count                | 7 auxes gives 21 send values                                                                                                              |
+| 3   | OSC decoder tolerates bundles, address-only packets and garbage | Malformed input never throws                                                                                                              |
+| 4   | while armed, meters and console info do not trigger a capture   | Only a real control change does; the solo state is not stored                                                                             |
+| 5   | cancel                                                          | Arming twice cancels; cancel drops a waiting capture and a recording                                                                      |
+| 6   | slot buttons while busy or empty                                | Nothing is sent to the console                                                                                                            |
+| 7   | recall with no scopes on                                        | Nothing is sent                                                                                                                           |
+| 8   | GEQ and channel captures are not interchangeable                | Refused with a warning; GEQ to GEQ works                                                                                                  |
+| 9   | script recorded with "last touched" target                      | Replays to the channels it was aimed at, wherever the operator touches later                                                              |
+| 10  | empty script recording                                          | Discarded                                                                                                                                 |
+| 11  | learn mode                                                      | Unknown parameter learned, persisted and captured; solo, meters, phantom never learned                                                    |
+| 12  | learn mode off                                                  | Unknown parameters ignored                                                                                                                |
+| 13  | pacing                                                          | 33 values at 200 a second take at least 100 ms                                                                                            |
+| 14  | OSC types preserved                                             | An int read is an int sent                                                                                                                |
+| 15  | validation                                                      | Bad snapshots, scripts, names and libraries are dropped or repaired                                                                       |
+| 16  | connection status                                               | Connecting, OK, then failure when replies stop                                                                                            |
+| 17  | library file                                                    | Written on change, read on start                                                                                                          |
+| 18  | iPad relay                                                      | Passes both ways; iPad query replies are not touches; iPad writes are                                                                     |
+| 19  | console setup values                                            | Picks this computer's address on the console's network; the console's Send is the module's listen port and its Rcv the module's send port |
+| 20  | settings page console row                                       | Shows the saved ports under the console's own column names                                                                                |
 
 ### test/sdk.test.mjs: against the Companion SDK
 
-| #   | Test                                       | What it shows                                                                      |
-| --- | ------------------------------------------ | ---------------------------------------------------------------------------------- |
-| 1   | manifest passes the SDK validator          | `companion/manifest.json` is acceptable to Companion                               |
-| 2   | manifest, package.json and changelog agree | Same name and version; changelog entry exists                                      |
-| 3   | entry point shape                          | Default export extends `InstanceBase`; `UpgradeScripts` is exported                |
-| 4   | settings                                   | Every field has a default; ids unique                                              |
-| 5   | actions and feedbacks are well formed      | And every feedback is false while stopped                                          |
-| 6   | actions while stopped                      | Do nothing, without throwing                                                       |
-| 7   | presets                                    | Only use actions, feedbacks, options and variables that exist; each is listed once |
+| #   | Test                                       | What it shows                                                                                                         |
+| --- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| 1   | manifest passes the SDK validator          | `companion/manifest.json` is acceptable to Companion                                                                  |
+| 2   | manifest, package.json and changelog agree | Same name and version; changelog entry exists                                                                         |
+| 3   | entry point shape                          | Default export extends `InstanceBase`; `UpgradeScripts` is exported                                                   |
+| 4   | settings                                   | Every field has a default; ids unique                                                                                 |
+| 5   | actions and feedbacks are well formed      | And every feedback is false while stopped                                                                             |
+| 6   | actions while stopped                      | Do nothing, without throwing                                                                                          |
+| 7   | presets                                    | Only use actions, feedbacks, options and variables that exist; fixed-size labels fit on one line; each is listed once |
+| 8   | name shown in Companion                    | The manifest's product list is one short product name, so the connection lists as "DiGiCo: SD/Quantum Recall"         |
 
 ## 2. Manual test plan
 
@@ -80,7 +84,7 @@ Run these against the DiGiCo offline software and then each console. Record the 
 the log. "Console" below means the offline software or a desk.
 
 **Setup.** Console: Setup > External Control, enable, add a "DiGiCo Pad" device with the
-Companion computer's IP, send port 8000, receive port 8001, and switch it on. Companion:
+Companion computer's IP, send port 8000, receive port 8001, switch it on, then press "load" and choose the iPad command set (note its name in the coverage table). Companion:
 add the connection with the console's IP and the same ports. Put the preset buttons on a
 page. Start from a session you don't mind changing.
 
@@ -120,29 +124,39 @@ node tools/probe.mjs <console-ip> 8001 8000 Graphic_EQ 1
 
 ## 3. Test log
 
-| Date       | Version | What was run                                                                                           | Environment                                                     | Result                                                           |
-| ---------- | ------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 2026-11-16 | 0.1.0   | Automated suite, 39 tests                                                                              | Node 22.23.4, Linux, simulated console                          | 39 passed, 0 failed                                              |
-| 2026-11-16 | 0.1.0   | Package build (`yarn package`)                                                                         | @companion-module/base 2.0.4, tools 3.2.1                       | Built `digico-recall-0.1.0.tgz`; manifest validated by the build |
-| 2026-11-16 | 0.1.0   | Web page, all four tabs: open a capture, relabel and save, open a script step, read names, edit a name | Headless Chrome against `tools/preview.mjs` (simulated console) | Rendered correctly, no browser console errors                    |
-| 2026-11-16 | 0.1.0   | Manual plan M1 to M22                                                                                  | DiGiCo offline software / consoles                              | **Not yet run**                                                  |
+| Date       | Version            | What was run                                                                                           | Environment                                                                     | Result                                                                                                 |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 2026-11-16 | 0.1.0              | Automated suite, 39 tests                                                                              | Node 22.23.4, Linux, simulated console                                          | 39 passed, 0 failed                                                                                    |
+| 2026-11-16 | 0.1.0              | Package build (`yarn package`)                                                                         | @companion-module/base 2.0.4, tools 3.2.1                                       | Built `digico-recall-0.1.0.tgz`; manifest validated by the build                                       |
+| 2026-11-16 | 0.1.0              | Web page, all four tabs: open a capture, relabel and save, open a script step, read names, edit a name | Headless Chrome against `tools/preview.mjs` (simulated console)                 | Rendered correctly, no browser console errors                                                          |
+| 2026-11-16 | 0.1.0              | Manual plan M1 to M22                                                                                  | DiGiCo offline software / consoles                                              | **Not yet run**                                                                                        |
+| 2026-11-16 | 0.1.0              | Import the release package and find the module in Companion                                            | Companion on macOS (maintainer)                                                 | Imported, but listed under the wrong name. See findings                                                |
+| 2026-11-16 | 0.1.1 (unreleased) | First connection, presets tab, Setup tab                                                               | Quantum 338 offline software on Windows, Companion on macOS, Wi-Fi (maintainer) | Connected after setup problems; scope labels wrapped. See findings. Manual plan M1 to M22 still to run |
+| 2026-11-16 | 0.1.1 (unreleased) | Automated suite, 43 tests; package build                                                               | Node 22.23.4, Linux, simulated console                                          | 43 passed, 0 failed; package built                                                                     |
+| 2026-11-16 | 0.1.1 (unreleased) | Setup tab: type a console address, check the row fills in, save the address                            | Headless Chrome against `tools/preview.mjs`                                     | Works; only the "no matching network card" case could be shown on the test machine                     |
 
 ### Console coverage
 
-| Console                        | Software version | Probe run | Manual plan | Notes |
-| ------------------------------ | ---------------- | --------- | ----------- | ----- |
-| Quantum 338 (offline software) |                  | No        | Not yet run |       |
-| Quantum 338                    |                  | No        | Not yet run |       |
-| SD10                           |                  | No        | Not yet run |       |
-| SD11                           |                  | No        | Not yet run |       |
-| SD9                            |                  | No        | Not yet run |       |
-| SD8                            |                  | No        | Not yet run |       |
+| Console                        | Software version | iPad command set | Probe run | Manual plan | Notes                |
+| ------------------------------ | ---------------- | ---------------- | --------- | ----------- | -------------------- |
+| Quantum 338 (offline software) |                  | `ipad_q3`        | No        | In progress | Connected 2026-11-16 |
+| Quantum 338                    |                  |                  | No        | Not yet run |                      |
+| SD10                           |                  |                  | No        | Not yet run |                      |
+| SD11                           |                  |                  | No        | Not yet run |                      |
+| SD9                            |                  |                  | No        | Not yet run |                      |
+| SD8                            |                  |                  | No        | Not yet run |                      |
 
 ### Findings
 
 Problems found during testing, and what was done about them.
 
-| Date       | Found by                  | Finding                                                                                                                                                  | Resolution                                                                                             |
-| ---------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 2026-11-16 | Automated test 3 (module) | With 1 in 17 replies dropped, one address was dropped on the first ask and again on the single retry, so a capture came back one value short             | Unanswered addresses are now asked for twice more instead of once. Test passes with the same loss rate |
-| 2026-11-16 | Web page check            | The status API returned the list of scope definitions under the same key as the list of active scopes, so the header could not show which scopes were on | Definitions moved to their own key (`scopeDefs`) before first release                                  |
+| Date       | Found by                                | Finding                                                                                                                                                                                                          | Resolution                                                                                                                                                                                 |
+| ---------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-16 | Automated test 3 (module)               | With 1 in 17 replies dropped, one address was dropped on the first ask and again on the single retry, so a capture came back one value short                                                                     | Unanswered addresses are now asked for twice more instead of once. Test passes with the same loss rate                                                                                     |
+| 2026-11-16 | Web page check                          | The status API returned the list of scope definitions under the same key as the list of active scopes, so the header could not show which scopes were on                                                         | Definitions moved to their own key (`scopeDefs`) before first release                                                                                                                      |
+| 2026-11-16 | Maintainer, first import into Companion | The module was listed as "DiGiCo: SD7; SD10; SD8; SD9; SD11; SD12; Quantum 338; ..." rather than by name                                                                                                         | Manifest product list reduced to "SD/Quantum Recall"; models moved to keywords; test added. In 0.1.1                                                                                       |
+| 2026-11-16 | Maintainer, first connection            | Connecting took several attempts: Windows Firewall blocked inbound UDP on the offline-software PC, and "Enable External Control" had not been set to YES. The module gave no guidance on what the console needed | Settings page and a new web Setup tab show the console's device row with the exact values to enter; firewall note added. In 0.1.1                                                          |
+| 2026-11-16 | Maintainer, Quantum offline software    | The console also needs an iPad command set loaded: "load" next to "commands allowed", then choose the set (only `ipad_q3` was offered on the Quantum 338 software). The setup instructions did not mention it    | Added to the help, the settings page note and the Setup tab. Other consoles are expected to offer differently named sets; the name is recorded per console in the coverage table. In 0.1.1 |
+| 2026-11-16 | Maintainer, presets tab in Companion    | Recall scope buttons wrapped mid-word at text size 18: COM/P, LEVE/L, DELA/Y, NAM/E, OTHE/R                                                                                                                      | Size reduced to 14; a test now rejects any fixed-size preset label too long for one line. In 0.1.1                                                                                         |
+| 2026-11-16 | Browser check of the new Setup tab      | Typing in the console-address box lost the cursor as soon as the address became valid, because the page redrew the box                                                                                           | The page now puts the cursor back after a redraw. Fixed before any build went out                                                                                                          |
+| 2026-11-16 | Review of this file                     | Several log and findings rows written during the 0.1.1 work had not been saved, because the edits were matched against the table's layout before it was reformatted                                              | Rows re-entered and checked by reading the file back                                                                                                                                       |
