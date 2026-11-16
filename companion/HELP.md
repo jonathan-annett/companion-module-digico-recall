@@ -85,10 +85,10 @@ its contents, and the text of the last one recalled turns yellow.
     matched before, they match after; if they differed, they still differ by as much.
     To make both sides identical, un-gang them, recall to each, and gang them again.
 - **CANCEL**: stops whatever is being built.
-- **GAIN −** and **GAIN +**: for the last touched input, move the analogue gain 1 dB and the
+- **⬇ GAIN ⬇ -1 dB** and **⬆ GAIN ⬆ +1 dB**: for the last touched input, move the analogue gain 1 dB and the
   trim 1 dB the other way. The preamp is driven less or more; the level in the mix, the
   monitors and into the dynamics does not change. For an input clipping at the preamp: tap
-  GAIN − until the input meter is safe, then UNITY. Other channels fed from the same
+  the down key until the input meter is safe, then UNITY. Other channels fed from the same
   preamp are not compensated. The small RESULT key shows what the last press did.
 - **UNITY**: for the last touched input, puts the fader at 0 dB and moves the channel's
   trim the other way, so the level in the mix stays the same and the fader is back where

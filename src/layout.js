@@ -58,8 +58,8 @@ export const CONTROL_KEYS = [
 	{ id: 'names_record', label: 'SAVE NAMES' },
 	{ id: 'names_add_all', label: 'ALL NAMES' },
 	{ id: 'audit', label: 'LOG' },
-	{ id: 'gain_down', label: 'GAIN −' },
-	{ id: 'gain_up', label: 'GAIN +' },
+	{ id: 'gain_down', label: '⬇ GAIN -1 dB' },
+	{ id: 'gain_up', label: '⬆ GAIN +1 dB' },
 	{ id: 'fader_unity', label: 'UNITY' },
 	{ id: 'fader_unity_result', label: 'RESULT' },
 ]

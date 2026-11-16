@@ -60,10 +60,10 @@ export function getPresets(label, config) {
 		act('fader_unity'),
 	])
 	// The preamp, with the trim keeping the level: for an input that is clipping going in
-	button('gain_down', 'Level', 'Gain down 1 dB, level kept (last touched input)', `GAIN −\\n${v('touched')}`, [
+	button('gain_down', 'Level', 'Gain down 1 dB, level kept (last touched input)', '⬇ GAIN ⬇\\n-1 dB', [
 		act('gain_nudge', { step: -1 }),
 	])
-	button('gain_up', 'Level', 'Gain up 1 dB, level kept (last touched input)', `GAIN +\\n${v('touched')}`, [
+	button('gain_up', 'Level', 'Gain up 1 dB, level kept (last touched input)', '⬆ GAIN ⬆\\n+1 dB', [
 		act('gain_nudge', { step: 1 }),
 	])
 	button('fader_unity_result', 'Level', 'What the last UNITY or GAIN key did', v('unity'), [], [], '7')
