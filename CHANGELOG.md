@@ -7,15 +7,27 @@ test log in [docs/TESTING.md](docs/TESTING.md) saying what was tested and on wha
 
 ## [Unreleased]
 
-- Setup advice: if the console is not answering, or after changing the connection's
-  settings, set Enable External Control to No and back to Yes. Found on the Quantum 338
-  offline software, which stopped answering after the module had been away for a while.
+Nothing yet.
 
-## [0.2.4] - unreleased
+## [0.2.5] - unreleased
 
 Test builds are numbered as they are handed over, because Companion will not replace an
-imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.3 were test
+imported module with another build of the same version. 0.1.1 and 0.2.0 to 0.2.4 were test
 builds and were never published; this entry covers everything since 0.1.0.
+
+Since test build 0.2.4:
+
+- **GEQ is its own recall scope.** EQ used to cover both the parametric EQ of a channel
+  or bus and graphic EQs. They are now separate toggle keys: EQ is the parametric EQ and
+  filters; GEQ is a graphic EQ's bands, in/out and trim. A capture holding a channel and
+  the graphic inserted on it can be recalled as either or both. Both are lit when the
+  module starts. **A graphic EQ recall now needs GEQ lit, not EQ.** There is a new GEQ
+  key in the Recall scope presets to add to your page; scripts already recorded are not
+  affected, since they hold the values they send.
+- Setup advice: if the console is not answering, or after changing the connection's
+  settings, set Enable External Control to No and back to Yes. The console can stop
+  answering a device that has been away for a while; the maintainer has seen the same
+  with the iPad app in the field.
 
 Since test build 0.2.3: recalls to ganged channels, after the maintainer's test on the
 Quantum 338 offline software.

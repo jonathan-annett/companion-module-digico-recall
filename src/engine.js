@@ -118,7 +118,7 @@ export class Engine {
 			log: (level, text) => this.log(level, text),
 			onChange: () => this.changed(),
 		})
-		this.scopes = new Set(['eq'])
+		this.scopes = new Set(['eq', 'geq'])
 		this.armed = false // true from pressing capture until a slot is pressed or it is cancelled
 		this.pending = 0 // channel reads in progress
 		this.reading = new Set() // which channels those are

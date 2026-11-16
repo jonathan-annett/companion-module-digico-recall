@@ -102,7 +102,9 @@ test('parameter table: every address has a recall scope, and the dangerous ones 
 	}
 	assert.equal(scopeOf('EQ/eq_gain_3'), 'eq')
 	assert.equal(scopeOf('Filters/hi_filter_freq'), 'eq')
-	assert.equal(scopeOf('geq_gain_31'), 'eq')
+	assert.equal(scopeOf('geq_gain_31'), 'geq')
+	assert.equal(scopeOf('geq_in'), 'geq')
+	assert.equal(scopeOf('geq__trim'), 'geq')
 	assert.equal(scopeOf('Dynamics/comp_thresh_1'), 'comp')
 	assert.equal(scopeOf('Dynamics/gate_thresh'), 'gate')
 	assert.equal(scopeOf('Dynamics/gate-duck-comp'), 'gate')
@@ -328,6 +330,62 @@ test('recall with no scopes switched on sends nothing', async (t) => {
 	assert.equal(sim.received.length, 0)
 })
 
+test('EQ and GEQ are separate scopes: a channel captured with its graphic can be recalled as either', async (t) => {
+	const { sim, engine } = await rig(t)
+	assert.deepEqual([...engine.scopes].sort(), ['eq', 'geq'], 'both are lit to begin with')
+	// One capture holding a group and the graphic EQ inserted on it
+	await engine.captureToHold('Group_Outputs', 1)
+	await engine.captureToHold('Graphic_EQ', 2)
+	engine.pressSlot(1)
+	const [group, graphic] = engine.lib.slots['1'].steps
+	const eqWas = group.values['EQ/eq_gain_3'].a[0]
+	const geqWas = graphic.values.geq_gain_10.a[0]
+	const disturb = () => {
+		sim.surface('/Group_Outputs/1/EQ/eq_gain_3', 'f', [-15])
+		sim.surface('/Graphic_EQ/2/geq_gain_10', 'f', [-9])
+		sim.surface('/Graphic_EQ/2/geq_in', 'f', [0])
+		sim.received.length = 0
+	}
+	const settle = async () => {
+		await engine.transport.drained()
+		await sleep(60)
+	}
+
+	// EQ only: the parametric EQ and filters come back, the graphic is left alone
+	disturb()
+	engine.setScopes(['eq'])
+	engine.pressSlot(1)
+	await until(() => sim.get('/Group_Outputs/1/EQ/eq_gain_3') === eqWas, 'group EQ restored')
+	await settle()
+	assert.ok(
+		sim.received.every((m) => m.path.startsWith('/Group_Outputs/1/EQ/')),
+		'nothing sent to the graphic',
+	)
+	assert.equal(sim.get('/Graphic_EQ/2/geq_gain_10'), -9)
+
+	// GEQ only: the graphic comes back (bands, in/out, trim), the group's EQ is left alone
+	disturb()
+	engine.setScopes(['geq'])
+	engine.pressSlot(1)
+	await until(() => sim.get('/Graphic_EQ/2/geq_gain_10') === geqWas, 'graphic restored')
+	await settle()
+	assert.ok(
+		sim.received.every((m) => m.path.startsWith('/Graphic_EQ/2/geq_')),
+		'nothing sent to the group',
+	)
+	assert.equal(sim.received.length, 34, '32 bands, in/out and trim; not the name')
+	assert.equal(sim.get('/Group_Outputs/1/EQ/eq_gain_3'), -15)
+
+	// Both lit: both come back
+	disturb()
+	engine.setScopes(['eq', 'geq'])
+	engine.pressSlot(1)
+	await until(
+		() => sim.get('/Graphic_EQ/2/geq_gain_10') === geqWas && sim.get('/Group_Outputs/1/EQ/eq_gain_3') === eqWas,
+		'both',
+	)
+})
+
 test('a graphic EQ capture is refused on a channel, and a channel capture on a graphic EQ', async (t) => {
 	const { sim, engine, logs } = await rig(t)
 	await engine.captureToHold('Graphic_EQ', 1)
@@ -537,7 +595,7 @@ test('sending is paced to the configured rate', async (t) => {
 	const { sim, engine } = await rig(t, { rate: 200 })
 	await engine.captureToHold('Graphic_EQ', 1)
 	engine.pressSlot(1)
-	engine.setScopes(['eq'])
+	engine.setScopes(['geq'])
 	sim.received.length = 0
 	const started = Date.now()
 	engine.pressSlot(1) // 34 values at 200/s should take roughly 160 ms
@@ -787,7 +845,7 @@ test('gangs: a recall writes to one member only, and the others follow by the sa
 	const apart = sim.get(`/Graphic_EQ/${other}/geq_gain_20`) - sim.get(`/Graphic_EQ/${side}/geq_gain_20`)
 	assert.equal(Math.abs(apart), 2)
 	engine.setTargetMode('touched')
-	engine.setScopes(['eq'])
+	engine.setScopes(['geq'])
 	sim.received.length = 0
 	assert.equal(engine.pressSlot(1), 'recalled')
 	await until(() => sim.get(`/Graphic_EQ/${side}/geq_gain_20`) === want, 'touched side set exactly')

@@ -44,6 +44,7 @@ export const FALLBACK_COUNTS = {
 
 export const SCOPES = [
 	{ id: 'eq', label: 'EQ' },
+	{ id: 'geq', label: 'GEQ' },
 	{ id: 'comp', label: 'COMP' },
 	{ id: 'gate', label: 'GATE' },
 	{ id: 'level', label: 'LEVEL' },
@@ -180,7 +181,10 @@ export function isKnownSuffix(section, suffix) {
 export function scopeOf(suffix) {
 	if (/(^|\/)name$/.test(suffix)) return 'name'
 	if (/^Aux_Send\//.test(suffix)) return 'aux'
-	if (/^(EQ|Filters)\//.test(suffix) || /^geq_/.test(suffix)) return 'eq'
+	// A graphic EQ has its own toggle, so a capture holding a channel and the graphic
+	// inserted on it can be recalled as either one or both
+	if (/^geq_/.test(suffix)) return 'geq'
+	if (/^(EQ|Filters)\//.test(suffix)) return 'eq'
 	if (/^Dynamics\/gate/.test(suffix)) return 'gate'
 	if (/^Dynamics\//.test(suffix)) return 'comp'
 	if (/^(fader|mute|hard_mute)$/.test(suffix)) return 'level'

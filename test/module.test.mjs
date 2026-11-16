@@ -201,7 +201,7 @@ await test('graphic EQ capture and recall', async () => {
 	assert.equal(Object.keys(mod.engine.lib.slots['2'].steps[0].values).length, 35)
 	const saved = mod.engine.lib.slots['2'].steps[0].values.geq_gain_17.a[0]
 	sim.surface('/Graphic_EQ/2/geq_gain_17', 'f', [-11])
-	await run('scopes', { scopes: ['eq'] })
+	await run('scopes', { scopes: ['geq'] })
 	await run('slot', { slot: 2 })
 	await until(() => sim.get('/Graphic_EQ/2/geq_gain_17') === saved, 'GEQ band restored')
 })

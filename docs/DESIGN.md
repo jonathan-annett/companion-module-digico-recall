@@ -278,3 +278,14 @@ console and network.
 - The partners' moves arrive from the console just after the write. They are marked as
   expected, so they do not change the last touched channel or start a capture.
 - Seen on graphic EQs only. Ganged inputs and busses are assumed to behave the same.
+
+### 2026-11-17: GEQ as its own scope, 0.2.5
+
+- The maintainer asked whether the EQ key meant parametric EQ, graphic EQ or both. It
+  meant both, which was fine while a capture held one channel, but captures can now hold
+  a channel and the graphic inserted on it, and wanting one without the other is normal.
+- GEQ is now a scope of its own: a graphic's bands, in/out switch and trim. EQ is the
+  parametric EQ and filters of inputs and busses. The graphic's name stays under NAME.
+- Both start lit, so a fresh connection recalls a graphic as before. A page built from
+  the earlier presets has no GEQ key; without one, GEQ simply stays lit.
+- Recorded scripts are unaffected: they store the values to send, not scope names.

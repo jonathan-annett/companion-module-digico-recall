@@ -88,10 +88,12 @@ its contents, and the text of the last one recalled turns yellow.
 
 **Recall scope**
 
-- Toggle keys: EQ, COMP, GATE, LEVEL, AUX, GAIN, PAN, DELAY, NAME, OTHER. Only the lit
-  ones are sent when you recall a capture (green slot). EQ includes the filters; LEVEL is
-  fader and mute; GAIN is analogue gain, trim, pad and polarity; OTHER is insert on/off
-  plus anything learned.
+- Toggle keys: EQ, GEQ, COMP, GATE, LEVEL, AUX, GAIN, PAN, DELAY, NAME, OTHER. Only the
+  lit ones are sent when you recall a capture (green slot). EQ is the parametric EQ of a
+  channel or bus, with its filters; GEQ is a graphic EQ (bands, in/out and trim), so to
+  recall a graphic EQ light GEQ. LEVEL is fader and mute; GAIN is analogue gain, trim,
+  pad and polarity; OTHER is insert on/off plus anything learned. EQ and GEQ are lit when
+  the module starts.
 
 **Build**
 
