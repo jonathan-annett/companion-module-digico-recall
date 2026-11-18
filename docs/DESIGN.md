@@ -421,3 +421,26 @@ console and network.
 - The function that chooses is written once and placed in the page as text, so the code
   that is tested is the code that runs.
 - To be removed when the module is accepted into the store.
+
+### 2026-11-19: testing against the offline software
+
+- No console is available for a while. The maintainer has four versions of the offline
+  software on a Windows PC, Companion on a Mac, and Claude's desktop app (with computer
+  use) on the PC, and asked how much of the testing can be automated.
+- Most of it needs no screen: the link is OSC both ways. `tools/offline-test.mjs` runs
+  on the PC with Node alone and records, per software version, which settings answer,
+  which can be written and how they are rounded, whether writes are announced back,
+  whether writing one setting moves others, and whether the module's own capture,
+  compare, put-back, fader-to-unity and gain-nudge arithmetic holds. It restores what it
+  changes and checks that it did.
+- The tool is itself tested against the simulator, including a console that lacks a
+  setting and a preamp that only moves in whole dB, so that an "unexpected" in a real
+  result means something.
+- What needs the screen is written as a run sheet (`docs/OFFLINE-TESTING.md`): moving
+  controls so the software announces them, ganging, snapshots, and reading values off the
+  display (graphic EQ band frequencies, EQ curve shapes). These answer open questions
+  recorded earlier: the slot comparison's possible blind spot after a snapshot, pre/post
+  on input sends, and the two settings the EQ agent needs.
+- The same tool pointed at the proxy re-runs everything through it.
+- Limits: the offline software is not a console. It has no audio, and it may differ from
+  console firmware in what it announces.
