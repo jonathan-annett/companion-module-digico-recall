@@ -363,14 +363,12 @@ export async function runOfflineTests(o) {
 				addresses: [...new Set(events.map((m) => m.path))],
 				touched: engine.lastTouched,
 				gangs: engine.gangList(),
-				events: events
-					.slice(0, 3000)
-					.map((m) => ({
-						ms: m.t - t0,
-						path: m.path,
-						types: m.types,
-						args: m.args.map((x) => (typeof x === 'number' ? round(x) : x)),
-					})),
+				events: events.slice(0, 3000).map((m) => ({
+					ms: m.t - t0,
+					path: m.path,
+					types: m.types,
+					args: m.args.map((x) => (typeof x === 'number' ? round(x) : x)),
+				})),
 			}
 			say(
 				`Watch: ${events.length} message(s) on ${results.watch.addresses.length} address(es); last touched ${engine.lastTouched ? `${engine.lastTouched.section} ${engine.lastTouched.index}` : 'nothing'}; gangs seen: ${results.watch.gangs.map((g) => `${g.section} ${g.members.join('+')}`).join(', ') || 'none'}`,
